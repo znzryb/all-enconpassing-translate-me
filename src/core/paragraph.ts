@@ -9,7 +9,7 @@
  */
 
 import {
-  BLOCK_TAGS, INLINE_TAGS, OPAQUE_TAGS, DROP_TAGS, SKIP_SELECTORS,
+  BLOCK_TAGS, INLINE_TAGS, OPAQUE_TAGS, BLOCK_OPAQUE_TAGS, DROP_TAGS, SKIP_SELECTORS,
   NO_TRANSLATE_PATTERNS, MIN_TEXT_LENGTH,
   BLOCK_MIN_TEXT_COUNT, BLOCK_MIN_WORD_COUNT, CJK_MIN_TEXT_COUNT,
   HEADING_SELECTORS, CLS,
@@ -34,14 +34,22 @@ export interface Unit {
   done?: boolean;
 }
 
-interface Mark {
+export interface Mark {
   /** Self-closing marks stand in for opaque content the model must not see. */
   selfClosing: boolean;
-  /** Verbatim markup restored for a self-closing mark. */
-  html?: string;
+  /**
+   * The original element, restored by cloning rather than by re-parsing
+   * markup. Cloning keeps the node exactly as the page built it — an SVG
+   * formula, a highlighted code span — and keeps page-authored content out of
+   * the sanitiser, which only needs to police what the model wrote.
+   */
+  node?: Element;
   open?: string;
   close?: string;
 }
+
+/** Stands in for an opaque node until the real one is cloned back into place. */
+export const SLOT_TAG = 'aetm-slot';
 
 let nextUnitId = 1;
 
@@ -82,11 +90,20 @@ function walk(el: Element, out: Unit[]): void {
 
     if (DROP_TAGS.has(child_.tagName)) continue;
 
-    // Opaque content joins the run as a placeholder and is never descended
-    // into. Checking this *before* asking whether the element is a block is
-    // what keeps an inline formula from cutting its sentence in half: a
-    // rendered formula is a <span> wrapping an <svg>, and treating that <svg>
-    // as a block boundary splits the paragraph at every formula.
+    // Untranslatable *block* content ends the paragraph just as any block
+    // would, but is not descended into and never becomes a placeholder. A code
+    // listing is not part of the sentence next to it.
+    if (BLOCK_OPAQUE_TAGS.has(child_.tagName)) {
+      sawBlockChild = true;
+      flush();
+      continue;
+    }
+
+    // Opaque *inline* content joins the run as a placeholder and is never
+    // descended into. Checking this before asking whether the element is a
+    // block is what keeps an inline formula from cutting its sentence in half:
+    // a rendered formula is a <span> wrapping an <svg>, and treating that
+    // <svg> as a block boundary splits the paragraph at every formula.
     if (isOpaque(child_)) {
       run.push(child_);
       continue;
@@ -176,7 +193,7 @@ function serialize(nodes: Node[]): { html: string; marks: Mark[] } {
     const index = marks.length;
 
     if (isOpaque(el)) {
-      marks.push({ selfClosing: true, html: el.outerHTML });
+      marks.push({ selfClosing: true, node: el });
       return `<b${index}/>`;
     }
 
@@ -190,7 +207,7 @@ function serialize(nodes: Node[]): { html: string; marks: Mark[] } {
     if (!inner.trim()) {
       // An element with no text (a spacer, an icon) carries no meaning for the
       // model; keep it verbatim rather than asking for a translation of "".
-      marks[index] = { selfClosing: true, html: el.outerHTML };
+      marks[index] = { selfClosing: true, node: el };
       return `<b${index}/>`;
     }
     return `<b${index}>${inner}</b${index}>`;
@@ -204,13 +221,16 @@ export function deserialize(translated: string, marks: Mark[]): string {
   const used = new Set<number>();
 
   let html = translated
-    .replace(/<b(\d+)\s*\/>/g, (m, n: string) => {
+    // Attributes are tolerated but discarded: a model that decorates a marker
+    // should not break it, and anything it invents there is untrusted — the
+    // real attributes live in `mark.open`.
+    .replace(/<b(\d+)(?:\s[^>]*?)?\s*\/>/g, (m, n: string) => {
       const mark = marks[Number(n)];
       if (!mark?.selfClosing) return m;
       used.add(Number(n));
-      return mark.html ?? '';
+      return `<${SLOT_TAG} data-n="${n}"></${SLOT_TAG}>`;
     })
-    .replace(/<b(\d+)>/g, (m, n: string) => {
+    .replace(/<b(\d+)(?:\s[^>]*?)?>/g, (m, n: string) => {
       const mark = marks[Number(n)];
       if (!mark || mark.selfClosing) return m;
       used.add(Number(n));
@@ -225,16 +245,19 @@ export function deserialize(translated: string, marks: Mark[]): string {
   // A model that dropped an opaque marker would silently delete an image or a
   // code span, so anything unused is appended rather than lost.
   const dropped = marks
-    .map((mark, i) => (mark.selfClosing && !used.has(i) ? mark.html ?? '' : ''))
+    .map((mark, i) =>
+      mark.selfClosing && !used.has(i) ? `<${SLOT_TAG} data-n="${i}"></${SLOT_TAG}>` : '',
+    )
     .filter(Boolean);
   if (dropped.length) html += dropped.join('');
 
   // Strip any marker the model invented or mangled beyond repair.
-  return html.replace(/<\/?b\d+\s*\/?>/g, '');
+  return html.replace(/<\/?b\d+(?:\s[^>]*?)?\s*\/?>/g, '');
 }
 
 function shouldSkipElement(el: Element): boolean {
   if (DROP_TAGS.has(el.tagName) || OPAQUE_TAGS.has(el.tagName)) return true;
+  if (BLOCK_OPAQUE_TAGS.has(el.tagName)) return true;
   if (el.classList.contains(CLS.wrapper) || el.closest(`.${CLS.wrapper}`)) return true;
   if (safeMatches(el, SKIP_SELECTORS)) return true;
   if ((el as HTMLElement).isContentEditable) return true;
@@ -259,6 +282,7 @@ function isInline(el: Element): boolean {
 function hasBlockDescendant(el: Element): boolean {
   for (const child of Array.from(el.children)) {
     if (DROP_TAGS.has(child.tagName) || isOpaque(child)) continue;
+    if (BLOCK_OPAQUE_TAGS.has(child.tagName)) return true;
     if (!isInline(child) || hasBlockDescendant(child)) return true;
   }
   return false;

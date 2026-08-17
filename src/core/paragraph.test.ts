@@ -104,14 +104,17 @@ describe('inline marker round-trip', () => {
     expect(unit.html).toBe('Run <b0/> to begin now.');
     expect(unit.html).not.toContain('npm install');
 
+    // The opaque node is restored by cloning at render time, so deserialize
+    // leaves a slot behind rather than re-parsed markup. See render.test.ts.
     const restored = deserialize('运行 <b0/> 开始。', unit.marks);
-    expect(restored).toBe('运行 <code>npm install</code> 开始。');
+    expect(restored).toBe('运行 <aetm-slot data-n="0"></aetm-slot> 开始。');
+    expect(unit.marks[0]!.node!.textContent).toBe('npm install');
   });
 
   it('re-attaches an opaque marker the model dropped', () => {
     const units = scan('<p>See the <img src="/a.png" alt="chart"> above here.</p>');
     const restored = deserialize('见上方图表。', units[0]!.marks);
-    expect(restored).toContain('<img src="/a.png"');
+    expect(restored).toContain('aetm-slot data-n="0"');
   });
 
   it('strips markers the model invented', () => {
@@ -298,5 +301,20 @@ describe('code blocks are boundaries, not inline content', () => {
     const units = scan('<p>Call <code>fn()</code> before the retry begins.</p>');
     expect(units).toHaveLength(1);
     expect(units[0]!.html).toBe('Call <b0/> before the retry begins.');
+  });
+});
+
+describe('marker robustness', () => {
+  it('tolerates a marker the model decorated with attributes', () => {
+    const units = scan('<p>Read the <a href="/docs">documentation</a> first.</p>');
+    const restored = deserialize('先阅读<b0 class="x">文档</b0>。', units[0]!.marks);
+    // The original attributes win; anything the model added is discarded.
+    expect(restored).toBe('先阅读<a href="/docs">文档</a>。');
+  });
+
+  it('tolerates a decorated self-closing marker', () => {
+    const units = scan('<p>Run <code>fn()</code> before the retry.</p>');
+    const restored = deserialize('先运行 <b0 lang="en"/>。', units[0]!.marks);
+    expect(restored).toContain('aetm-slot data-n="0"');
   });
 });

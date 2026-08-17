@@ -10,7 +10,7 @@
  */
 
 import { CLS, STATE_ATTR, WRAPPER_TAG, type DisplayState } from './dom-rules';
-import { deserialize, type Unit } from './paragraph';
+import { SLOT_TAG, deserialize, type Mark, type Unit } from './paragraph';
 import type { ThemeId } from './settings';
 
 const wrappers = new Map<number, HTMLElement>();
@@ -83,6 +83,7 @@ export function renderTranslation(unit: Unit, translated: string): void {
   // Parsed in an inert document so no script or handler in the model's output
   // can execute, then imported node-by-node after a tag/attribute filter.
   inner.append(...sanitize(html));
+  fillSlots(inner, unit.marks);
   wrapper.appendChild(inner);
 
   unit.done = true;
@@ -149,11 +150,29 @@ function dots(): HTMLElement {
   return el;
 }
 
+/**
+ * Restores opaque content by cloning the original nodes into their slots.
+ *
+ * Page-authored content deliberately bypasses the sanitiser: it came from the
+ * page, so it needs no policing, and running it through a tag whitelist would
+ * strip exactly the markup that makes it worth preserving — an `<svg>` formula
+ * flattened to nothing, a `<pre>` listing unwrapped into one unbroken line.
+ */
+function fillSlots(root: Element, marks: Mark[]): void {
+  for (const slot of Array.from(root.querySelectorAll(SLOT_TAG))) {
+    const index = Number((slot as HTMLElement).dataset.n);
+    const original = marks[index]?.node;
+    if (original) slot.replaceWith(original.cloneNode(true));
+    else slot.remove();
+  }
+}
+
 /** Tags the model is allowed to emit. Anything else is unwrapped to its text. */
 const ALLOWED = new Set([
   'A', 'ABBR', 'B', 'BR', 'CITE', 'CODE', 'DEL', 'EM', 'I', 'IMG', 'INS', 'KBD',
   'MARK', 'Q', 'RB', 'RP', 'RT', 'RUBY', 'S', 'SAMP', 'SMALL', 'SPAN', 'STRONG',
   'SUB', 'SUP', 'TIME', 'U', 'VAR', 'WBR', 'FONT',
+  SLOT_TAG.toUpperCase(),
 ]);
 const ALLOWED_ATTRS = new Set(['href', 'title', 'src', 'alt', 'class', 'dir', 'lang', 'width', 'height']);
 
@@ -171,6 +190,8 @@ function clean(root: Element): void {
       el.replaceWith(...Array.from(el.childNodes));
       continue;
     }
+    // The slot's data-n is how it finds its node; it never reaches the page.
+    if (el.tagName === SLOT_TAG.toUpperCase()) continue;
     for (const attr of Array.from(el.attributes)) {
       const name = attr.name.toLowerCase();
       const bad = !ALLOWED_ATTRS.has(name) || /^javascript:/i.test(attr.value.trim());

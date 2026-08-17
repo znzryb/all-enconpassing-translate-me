@@ -48,7 +48,7 @@ export const OPAQUE_TAGS = new Set([
  * carries a flattened copy of the listing along with it.
  */
 export const BLOCK_OPAQUE_TAGS = new Set([
-  'PRE', 'IFRAME', 'VIDEO', 'AUDIO', 'CANVAS', 'OBJECT', 'EMBED', 'FIGURE',
+  'PRE', 'IFRAME', 'VIDEO', 'AUDIO', 'CANVAS', 'OBJECT', 'EMBED',
 ]);
 
 /**

@@ -14,13 +14,49 @@ import { deserialize, type Unit } from './paragraph';
 import type { ThemeId } from './settings';
 
 const wrappers = new Map<number, HTMLElement>();
+const rendered = new Map<number, Unit>();
+/** Original text-node values, stashed while translation-only mode is active. */
+const stashed = new Map<Text, string>();
 
 export function setDisplayState(state: DisplayState): void {
   document.documentElement.setAttribute(STATE_ATTR, state);
+  if (state === 'translation') hideSources();
+  else restoreSources();
 }
 
 export function getDisplayState(): DisplayState {
   return (document.documentElement.getAttribute(STATE_ATTR) as DisplayState) ?? 'original';
+}
+
+/**
+ * Translation-only mode hides the source in place rather than unwrapping it:
+ * element nodes get a class, text nodes have their value stashed and blanked.
+ * Wrapping them in a container instead would change the DOM shape and quietly
+ * break site CSS like `p > a`.
+ */
+function hideSources(): void {
+  for (const unit of rendered.values()) {
+    if (!unit.done) continue;
+    for (const node of unit.nodes) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node as Text;
+        if (!stashed.has(text)) {
+          stashed.set(text, text.nodeValue ?? '');
+          text.nodeValue = '';
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        (node as Element).classList.add(CLS.sourceHidden);
+      }
+    }
+  }
+}
+
+function restoreSources(): void {
+  for (const [text, value] of stashed) text.nodeValue = value;
+  stashed.clear();
+  for (const el of document.querySelectorAll(`.${CLS.sourceHidden}`)) {
+    el.classList.remove(CLS.sourceHidden);
+  }
 }
 
 /** Inserts a placeholder so the reader sees progress while the request is out. */
@@ -31,6 +67,7 @@ export function renderPending(unit: Unit, theme: ThemeId): void {
   wrapper.appendChild(dots());
   insert(unit, wrapper);
   wrappers.set(unit.id, wrapper);
+  rendered.set(unit.id, unit);
 }
 
 export function renderTranslation(unit: Unit, translated: string): void {
@@ -50,6 +87,9 @@ export function renderTranslation(unit: Unit, translated: string): void {
 
   unit.done = true;
   (unit.container as HTMLElement).classList.add(CLS.translated);
+  // A unit finishing while translation-only is already active still needs its
+  // source hidden, otherwise it renders bilingual until the next toggle.
+  if (getDisplayState() === 'translation') hideSources();
 }
 
 export function renderError(unit: Unit, message: string): void {
@@ -65,11 +105,14 @@ export function renderError(unit: Unit, message: string): void {
 export function discard(unit: Unit): void {
   wrappers.get(unit.id)?.remove();
   wrappers.delete(unit.id);
+  rendered.delete(unit.id);
 }
 
 export function removeAll(): void {
+  restoreSources();
   for (const w of wrappers.values()) w.remove();
   wrappers.clear();
+  rendered.clear();
   for (const el of document.querySelectorAll(`.${CLS.translated}`)) el.classList.remove(CLS.translated);
   // Catch wrappers left behind by a previous page state (bfcache, SPA nav).
   for (const el of document.querySelectorAll(`.${CLS.wrapper}`)) el.remove();

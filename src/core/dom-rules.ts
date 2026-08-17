@@ -108,6 +108,8 @@ export const CLS = {
   error: 'aetm-error',
   /** Marks a source node that already owns a translation. */
   translated: 'aetm-translated',
+  /** Applied to source elements while translation-only mode is active. */
+  sourceHidden: 'aetm-source-hidden',
 } as const;
 
 /** Attribute on `<html>` driving the three display states via CSS alone. */

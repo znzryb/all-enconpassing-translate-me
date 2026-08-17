@@ -69,8 +69,11 @@ Add a site to **Always translate** and it starts on load.
 
 ## Settings worth knowing
 
-- **Style** — how the translation is set apart: a divider line (default), a
-  dashed box, a highlighter, dimmed text, or nothing at all.
+- **Style** — optional decoration on the translation: none (default), dimmed,
+  a dashed box, or a highlighter. Layout is automatic and separate from this:
+  prose gets its own line, while short interface text such as a button label is
+  appended on the same line so its container widens instead of growing taller
+  into whatever sits below it.
 - **Extra instructions** — appended to the system prompt. Use it for tone
   ("keep it casual") or terminology ("translate *transformer* as 变换器").
 - **Paragraphs per request** — bigger batches mean fewer requests and better
@@ -82,7 +85,7 @@ Add a site to **Always translate** and it starts on load.
 
 ```bash
 pnpm dev       # load .output/chrome-mv3-dev, hot reloads
-pnpm test      # 40 tests, no network
+pnpm test      # 87 tests, no network
 pnpm compile   # typecheck
 pnpm icons     # re-render assets/icon.svg into PNGs
 ```
@@ -100,6 +103,7 @@ src/core/
   render.ts              translation units → DOM
   scheduler.ts           viewport-driven queueing
   llm.ts                 chat-completions client, %% batching
+  code-detect.ts         tells a code listing from prose in a <pre>
   cache.ts  settings.ts  dom-rules.ts  inject.css
   subtitle/              parsers + bilingual overlay
 ```

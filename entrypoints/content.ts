@@ -10,8 +10,9 @@ export default defineContentScript({
   cssInjectionMode: 'manifest',
 
   async main() {
-    // Only the top document drives translation; iframes get their own instance
-    // through their own injection, and ad frames should not be translated at all.
+    // Content scripts default to the top frame only, which is what we want:
+    // ad and widget iframes are not worth translating, and a single instance
+    // per tab keeps the popup's status readout unambiguous.
     const settings = await loadSettings();
     const host = location.hostname;
 

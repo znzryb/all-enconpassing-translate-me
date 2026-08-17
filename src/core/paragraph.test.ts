@@ -253,3 +253,50 @@ describe('headings always take their own line', () => {
     expect(units[0]!.block).toBe(false);
   });
 });
+
+describe('code blocks are boundaries, not inline content', () => {
+  // Regression (nowcoder): <pre> was classed as opaque *inline* content, so a
+  // pseudocode block merged into the sentence after it as "<b0/>Note that…".
+  // The translation then expanded that placeholder back into the whole code
+  // block, flattened onto one line ahead of the Chinese text.
+  it('does not merge a pre block into the following text', () => {
+    const units = scan(
+      '<div><pre>dp():\n  Let q be an empty queue\n  Return counter</pre>' +
+        'Note that the same vertex may be pushed into the queue multiple times.</div>',
+    );
+    expect(units).toHaveLength(1);
+    expect(units[0]!.text).toBe(
+      'Note that the same vertex may be pushed into the queue multiple times.',
+    );
+    expect(units[0]!.html).not.toContain('b0');
+    expect(units[0]!.html).not.toContain('empty queue');
+  });
+
+  it('does not merge a pre block into the preceding text', () => {
+    const units = scan(
+      '<div>The algorithm works as follows.<pre>while true:\n  step()</pre></div>',
+    );
+    expect(units.map((u) => u.text)).toEqual(['The algorithm works as follows.']);
+  });
+
+  it('leaves a standalone code block entirely alone', () => {
+    expect(scan('<pre>int main() { return 0; }</pre>')).toHaveLength(0);
+    expect(scan('<pre><code>npm install</code></pre>')).toHaveLength(0);
+  });
+
+  it('still treats other block media as boundaries', () => {
+    const units = scan(
+      '<div>Watch this demonstration.<video src="/a.mp4"></video>Then read the notes below.</div>',
+    );
+    expect(units.map((u) => u.text)).toEqual([
+      'Watch this demonstration.',
+      'Then read the notes below.',
+    ]);
+  });
+
+  it('keeps inline code inside the sentence, unlike a pre block', () => {
+    const units = scan('<p>Call <code>fn()</code> before the retry begins.</p>');
+    expect(units).toHaveLength(1);
+    expect(units[0]!.html).toBe('Call <b0/> before the retry begins.');
+  });
+});

@@ -35,8 +35,20 @@ export const INLINE_TAGS = new Set([
  */
 export const OPAQUE_TAGS = new Set([
   'CODE', 'IMG', 'KBD', 'SAMP', 'SUB', 'SUP', 'TT', 'VAR', 'MATH', 'SVG',
-  'CANVAS', 'MJX-CONTAINER', 'D-MATH', 'PRE', 'IFRAME', 'VIDEO', 'AUDIO',
-  'OBJECT', 'DATETIME',
+  'MJX-CONTAINER', 'D-MATH', 'DATETIME',
+]);
+
+/**
+ * Untranslatable content that is *block* level.
+ *
+ * The distinction from `OPAQUE_TAGS` matters: an opaque inline element sits
+ * within a sentence and must not end it, whereas one of these ends the
+ * paragraph exactly as any other block would. Treating a `<pre>` as inline
+ * merges a code listing into the prose beside it, and the translation then
+ * carries a flattened copy of the listing along with it.
+ */
+export const BLOCK_OPAQUE_TAGS = new Set([
+  'PRE', 'IFRAME', 'VIDEO', 'AUDIO', 'CANVAS', 'OBJECT', 'EMBED', 'FIGURE',
 ]);
 
 /**

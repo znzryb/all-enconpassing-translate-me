@@ -9,8 +9,10 @@
  */
 
 import {
-  BLOCK_TAGS, INLINE_TAGS, OPAQUE_TAGS, SKIP_TAGS, SKIP_SELECTORS,
-  NO_TRANSLATE_PATTERNS, MIN_TEXT_LENGTH, MIN_BLOCK_TEXT_LENGTH, CLS,
+  BLOCK_TAGS, INLINE_TAGS, OPAQUE_TAGS, DROP_TAGS, SKIP_SELECTORS,
+  NO_TRANSLATE_PATTERNS, MIN_TEXT_LENGTH,
+  BLOCK_MIN_TEXT_COUNT, BLOCK_MIN_WORD_COUNT, CJK_MIN_TEXT_COUNT,
+  HEADING_SELECTORS, CLS,
 } from './dom-rules';
 
 export interface Unit {
@@ -21,6 +23,8 @@ export interface Unit {
   nodes: Node[];
   /** True when `nodes` covers every child of `container`. */
   whole: boolean;
+  /** Prose gets its own line; interface text is appended on the same line. */
+  block: boolean;
   /** Markup handed to the model, with inline tags reduced to `<b0>` markers. */
   html: string;
   /** Plain text, for length gates and language detection. */
@@ -70,11 +74,25 @@ function walk(el: Element, out: Unit[]): void {
     if (child.nodeType !== Node.ELEMENT_NODE) continue;
 
     const child_ = child as Element;
+
+    // Our own wrappers are inline <font> elements sitting right beside the
+    // source. Without this guard a rescan would collect the translation as
+    // source text and translate it again on every mutation.
+    if (child_.classList.contains(CLS.wrapper)) continue;
+
+    if (DROP_TAGS.has(child_.tagName)) continue;
+
+    // Opaque content joins the run as a placeholder and is never descended
+    // into. Checking this *before* asking whether the element is a block is
+    // what keeps an inline formula from cutting its sentence in half: a
+    // rendered formula is a <span> wrapping an <svg>, and treating that <svg>
+    // as a block boundary splits the paragraph at every formula.
+    if (isOpaque(child_)) {
+      run.push(child_);
+      continue;
+    }
+
     if (isInline(child_) && !hasBlockDescendant(child_)) {
-      // Our own wrappers are inline <font> elements sitting right beside the
-      // source. Without this guard a rescan would collect the translation as
-      // source text and translate it again on every mutation.
-      if (child_.classList.contains(CLS.wrapper)) continue;
       run.push(child_);
     } else {
       sawBlockChild = true;
@@ -103,12 +121,43 @@ function buildUnit(container: Element, nodes: Node[], whole: boolean): Unit | nu
   const trimmed = nodes.slice(start, end + 1);
 
   const text = trimmed.map((n) => n.textContent ?? '').join('').trim();
-  if (!isTranslatableText(text, container)) return null;
+  if (!isTranslatableText(text)) return null;
 
   const { html, marks } = serialize(trimmed);
   if (!html.trim()) return null;
 
-  return { id: nextUnitId++, container, nodes: trimmed, whole, html, text, marks };
+  // A run of nothing but placeholders — a standalone formula, a lone image —
+  // has no prose to translate, and asking would only invite the model to
+  // invent some.
+  const prose = html.replace(/<\/?b\d+\s*\/?>/g, '').trim();
+  if (!/\p{L}/u.test(prose) || prose.length < MIN_TEXT_LENGTH) return null;
+
+  return {
+    id: nextUnitId++,
+    container,
+    nodes: trimmed,
+    whole,
+    block: isProse(prose) || (whole && safeMatches(container, HEADING_SELECTORS)),
+    html,
+    text,
+    marks,
+  };
+}
+
+/**
+ * Prose earns its own line; interface text is appended inline.
+ *
+ * The distinction is length, not markup: a `<div>` holding "Submit" is a
+ * button no matter how it is built, and a translation stacked under it grows
+ * the box downward into whatever sits below. Appending on the same line grows
+ * it sideways instead, which is the direction such a container already flexes.
+ */
+function isProse(text: string): boolean {
+  // CJK writes no spaces, so word counting would call any sentence one word,
+  // and a dozen characters is already a full sentence rather than a label.
+  if (/[一-鿿぀-ヿ가-힯]/.test(text)) return text.length >= CJK_MIN_TEXT_COUNT;
+  if (text.length < BLOCK_MIN_TEXT_COUNT) return false;
+  return text.split(/\s+/).filter(Boolean).length >= BLOCK_MIN_WORD_COUNT;
 }
 
 /**
@@ -185,24 +234,31 @@ export function deserialize(translated: string, marks: Mark[]): string {
 }
 
 function shouldSkipElement(el: Element): boolean {
-  if (SKIP_TAGS.has(el.tagName)) return true;
+  if (DROP_TAGS.has(el.tagName) || OPAQUE_TAGS.has(el.tagName)) return true;
   if (el.classList.contains(CLS.wrapper) || el.closest(`.${CLS.wrapper}`)) return true;
-  if (el.matches(SKIP_SELECTORS)) return true;
+  if (safeMatches(el, SKIP_SELECTORS)) return true;
   if ((el as HTMLElement).isContentEditable) return true;
   return false;
 }
 
 function isInline(el: Element): boolean {
-  if (SKIP_TAGS.has(el.tagName)) return false;
   if (INLINE_TAGS.has(el.tagName)) return true;
   if (BLOCK_TAGS.has(el.tagName)) return false;
-  // Unknown tag (a web component): trust the computed display.
+  // Unknown tag (a web component, a custom element): trust the computed style.
   const display = getComputedStyle(el).display;
   return display.startsWith('inline') || display === 'contents' || display === 'ruby';
 }
 
+/**
+ * Whether descending into this element would cross a real block boundary.
+ *
+ * Opaque and dropped descendants are invisible to this question — they are
+ * already handled as placeholders or discarded, so letting them count as
+ * blocks would fragment sentences that merely contain a formula or an icon.
+ */
 function hasBlockDescendant(el: Element): boolean {
   for (const child of Array.from(el.children)) {
+    if (DROP_TAGS.has(child.tagName) || isOpaque(child)) continue;
     if (!isInline(child) || hasBlockDescendant(child)) return true;
   }
   return false;
@@ -210,22 +266,25 @@ function hasBlockDescendant(el: Element): boolean {
 
 function isOpaque(el: Element): boolean {
   if (OPAQUE_TAGS.has(el.tagName)) return true;
-  return el.matches(SKIP_SELECTORS);
+  return safeMatches(el, SKIP_SELECTORS);
+}
+
+/** `matches` throws on a malformed selector in some engines; never let it. */
+function safeMatches(el: Element, selectors: string): boolean {
+  try {
+    return el.matches(selectors);
+  } catch {
+    return false;
+  }
 }
 
 function isBlank(node: Node): boolean {
   return !node.textContent?.trim();
 }
 
-function isTranslatableText(text: string, container: Element): boolean {
+function isTranslatableText(text: string): boolean {
   if (text.length < MIN_TEXT_LENGTH) return false;
   if (NO_TRANSLATE_PATTERNS.some((re) => re.test(text))) return false;
-  // Chrome ships block-level defaults for these; short strings inside them are
-  // usually chrome (buttons, badges) rather than prose.
-  const tag = container.tagName;
-  if ((tag === 'BUTTON' || tag === 'OPTION' || tag === 'LABEL') && text.length < MIN_BLOCK_TEXT_LENGTH) {
-    return false;
-  }
   return /\p{L}/u.test(text);
 }
 

@@ -143,3 +143,113 @@ describe('language detection', () => {
     expect(looksLikeLanguage('これは日本語のテキストです', 'zh-CN')).toBe(false);
   });
 });
+
+describe('inline formulas must not break a paragraph', () => {
+  // Regression: Codeforces renders $$$x$$$ as <span class="MathJax_SVG"><svg>.
+  // Because SVG was in the skip set, the wrapping span read as "has a block
+  // descendant" and split the sentence at every formula, producing
+  // "You are given an array ¦给你一个数组 a of length ¦，长度为 n. For each ¦…".
+  it('keeps a MathJax 2 SVG formula inside the sentence', () => {
+    const units = scan(
+      '<p>You are given an array <span class="MathJax_SVG"><svg><g></g></svg></span>' +
+        ' of length <span class="MathJax_SVG"><svg><g></g></svg></span>. For each ' +
+        '<span class="MathJax_SVG"><svg><g></g></svg></span> find the maximum distance.</p>',
+    );
+    expect(units).toHaveLength(1);
+    expect(units[0]!.html).toBe(
+      'You are given an array <b0/> of length <b1/>. For each <b2/> find the maximum distance.',
+    );
+  });
+
+  it('keeps a MathJax 3 container inside the sentence', () => {
+    const units = scan(
+      '<p>For each <mjx-container class="MathJax"><mjx-math></mjx-math></mjx-container>' +
+        ' we want to find the answer.</p>',
+    );
+    expect(units).toHaveLength(1);
+    expect(units[0]!.html).toBe('For each <b0/> we want to find the answer.');
+  });
+
+  it('keeps a KaTeX formula inside the sentence', () => {
+    const units = scan(
+      '<p>The value <span class="katex"><span class="katex-mathml">x</span></span>' +
+        ' is bounded above.</p>',
+    );
+    expect(units).toHaveLength(1);
+    expect(units[0]!.html).toBe('The value <b0/> is bounded above.');
+  });
+
+  it('keeps inline code and images inside the sentence', () => {
+    const units = scan(
+      '<p>Call <code>fn()</code> then check <img src="/a.png"> before the retry.</p>',
+    );
+    expect(units).toHaveLength(1);
+    expect(units[0]!.html).toBe('Call <b0/> then check <b1/> before the retry.');
+  });
+
+  it('still splits on a genuine block element', () => {
+    const units = scan('<div>Intro sentence here.<p>Body sentence here.</p></div>');
+    expect(units.map((u) => u.text)).toEqual(['Intro sentence here.', 'Body sentence here.']);
+  });
+
+  it('drops a run that is nothing but opaque placeholders', () => {
+    const units = scan('<p><code>npm install</code></p><p>Real prose follows here.</p>');
+    expect(units.map((u) => u.text)).toEqual(['Real prose follows here.']);
+  });
+});
+
+describe('layout: own line vs same line', () => {
+  // Regression: a translation stacked under a content-sized button grew the box
+  // downward and collided with the element below it. Short interface text has
+  // to continue on the same line so the container widens instead.
+  it('appends short button text on the same line', () => {
+    const units = scan('<a class="btn">Jump to VJudge</a>');
+    expect(units).toHaveLength(1);
+    expect(units[0]!.block).toBe(false);
+  });
+
+  it('keeps nav and label text on the same line', () => {
+    expect(scan('<button>Submit</button>')[0]!.block).toBe(false);
+    expect(scan('<div class="badge">Finished</div>')[0]!.block).toBe(false);
+    expect(scan('<span>time limit per test</span>')[0]!.block).toBe(false);
+  });
+
+  it('gives a real sentence its own line', () => {
+    const units = scan('<p>You are given an array of length n and a target value.</p>');
+    expect(units[0]!.block).toBe(true);
+  });
+
+  it('gives a long heading its own line', () => {
+    const units = scan('<h1>National Taiwan University Class Preliminary 2026</h1>');
+    expect(units[0]!.block).toBe(true);
+  });
+
+  it('counts CJK source text by length, not by words', () => {
+    // No spaces to split on, so word counting would call this one word.
+    const units = scan('<p>这是一段足够长的中文句子用来测试分块行为。</p>');
+    expect(units[0]!.block).toBe(true);
+  });
+
+  it('measures prose length excluding placeholders', () => {
+    // The formula contributes no prose, so this stays interface-sized.
+    const units = scan('<div>Jump to <span class="katex"><span>x</span></span></div>');
+    expect(units[0]!.block).toBe(false);
+  });
+});
+
+describe('headings always take their own line', () => {
+  it('gives a short heading its own line despite the length gate', () => {
+    // "D. Distinct Numbers" is 19 chars / 3 words — interface-sized by length,
+    // but appending beside it reads as one run-on title.
+    expect(scan('<h2>D. Distinct Numbers</h2>')[0]!.block).toBe(true);
+    expect(scan('<div class="title">D. Distinct Numbers</div>')[0]!.block).toBe(true);
+    expect(scan('<h1>Input</h1>')[0]!.block).toBe(true);
+  });
+
+  it('does not promote a short label that merely sits inside a heading', () => {
+    // The run here is partial (a block sibling follows), so it is not the
+    // heading itself and stays inline.
+    const units = scan('<h2>Tag<div class="sub">Nested block</div></h2>');
+    expect(units[0]!.block).toBe(false);
+  });
+});

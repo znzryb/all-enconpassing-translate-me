@@ -124,7 +124,9 @@ export function hasTranslations(): boolean {
 
 function createWrapper(unit: Unit, theme: ThemeId): HTMLElement {
   const wrapper = document.createElement(WRAPPER_TAG);
-  wrapper.className = `${CLS.wrapper} ${unit.whole ? CLS.block : CLS.inline} aetm-theme-${theme}`;
+  // Layout follows the text, not the DOM: `block` is decided by how much prose
+  // the unit holds, while `whole` only decides where the node is inserted.
+  wrapper.className = `${CLS.wrapper} ${unit.block ? CLS.block : CLS.inline} aetm-theme-${theme}`;
   wrapper.dataset.aetmId = String(unit.id);
   wrapper.setAttribute('translate', 'no');
   wrapper.setAttribute('dir', 'auto');

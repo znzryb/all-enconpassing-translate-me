@@ -8,7 +8,7 @@ export interface ProviderConfig {
   model: string;
 }
 
-export type ThemeId = 'dividingLine' | 'plain' | 'dashedBorder' | 'marker' | 'weakened';
+export type ThemeId = 'plain' | 'dashedBorder' | 'marker' | 'weakened';
 
 export interface Settings {
   provider: ProviderId;
@@ -68,7 +68,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   targetLang: 'zh-CN',
   skipSameLanguage: true,
-  theme: 'dividingLine',
+  theme: 'plain',
   batchSize: 6,
   concurrency: 3,
   lookaheadScreens: 1.5,
@@ -113,8 +113,14 @@ function mergeSettings(stored: unknown): Settings {
   for (const id of Object.keys(DEFAULT_SETTINGS.providers) as ProviderId[]) {
     providers[id] = { ...DEFAULT_SETTINGS.providers[id], ...(s.providers?.[id] ?? {}) };
   }
-  return { ...DEFAULT_SETTINGS, ...s, providers };
+  const merged = { ...DEFAULT_SETTINGS, ...s, providers };
+  // `dividingLine` drew a dashed rule above every translation; it was dropped.
+  // Anyone still holding it in storage falls back to the undecorated default.
+  if (!VALID_THEMES.has(merged.theme)) merged.theme = DEFAULT_SETTINGS.theme;
+  return merged;
 }
+
+const VALID_THEMES = new Set<string>(['plain', 'dashedBorder', 'marker', 'weakened']);
 
 export function activeProvider(s: Settings): ProviderConfig {
   return s.providers[s.provider];

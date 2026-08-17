@@ -26,23 +26,36 @@ export const INLINE_TAGS = new Set([
 ]);
 
 /**
- * Inline elements whose content must survive the round-trip byte-for-byte.
- * They are swapped for `<b{n}>` placeholders before the request and restored
- * afterwards, so the model never sees (and so can never mangle) their text.
+ * Elements whose content must survive the round-trip byte-for-byte.
+ *
+ * These are swapped for `<b{n}/>` placeholders before the request and restored
+ * afterwards, so the model never sees — and so can never mangle — their
+ * content. Critically, an opaque element does *not* end the paragraph it sits
+ * in: an inline formula or code span is part of the sentence around it.
  */
 export const OPAQUE_TAGS = new Set([
   'CODE', 'IMG', 'KBD', 'SAMP', 'SUB', 'SUP', 'TT', 'VAR', 'MATH', 'SVG',
-  'MJX-CONTAINER', 'D-MATH',
+  'CANVAS', 'MJX-CONTAINER', 'D-MATH', 'PRE', 'IFRAME', 'VIDEO', 'AUDIO',
+  'OBJECT', 'DATETIME',
 ]);
 
-/** Never descend into these — no translatable prose lives inside. */
-export const SKIP_TAGS = new Set([
-  'AUDIO', 'BASE', 'CANVAS', 'DATETIME', 'HEAD', 'IFRAME', 'INPUT', 'LINK',
-  'MAP', 'META', 'NOSCRIPT', 'OBJECT', 'PRE', 'SCRIPT', 'STYLE', 'SVG',
-  'TEMPLATE', 'TEXTAREA', 'TITLE', 'TRACK', 'VIDEO',
+/**
+ * Elements dropped outright — they hold no prose, so they neither translate
+ * nor belong in a placeholder.
+ */
+export const DROP_TAGS = new Set([
+  'BASE', 'HEAD', 'INPUT', 'LINK', 'MAP', 'META', 'NOSCRIPT', 'OPTION',
+  'SCRIPT', 'SELECT', 'STYLE', 'TEMPLATE', 'TEXTAREA', 'TITLE', 'TRACK',
 ]);
 
-/** Structural opt-outs honoured by convention across the web. */
+/**
+ * Content treated as opaque by selector rather than tag name.
+ *
+ * Rendered maths is the important case: MathJax 2 emits
+ * `<span class="MathJax_SVG"><svg>`, MathJax 3 emits `<mjx-container>`, and
+ * KaTeX emits `<span class="katex">`. All three sit *inside* a sentence, so
+ * they must be placeholders rather than paragraph boundaries.
+ */
 export const SKIP_SELECTORS = [
   '.notranslate',
   '.no-translate',
@@ -54,16 +67,24 @@ export const SKIP_SELECTORS = [
   '[data-aetm-skip]',
   'code',
   'pre',
+  // maths, across every renderer in common use
   '.katex',
-  '.MathJax',
-  '.MathJax_Display',
+  '.katex-display',
+  '[class^="MathJax"]',
+  '[class*=" MathJax"]',
+  '[id^="MathJax-Element"]',
+  'mjx-container',
   '.math-block',
+  '.math-inline',
   '.mwe-math-element',
+  '.ltx_Math',
+  // code blocks
   '.highlight',
   '.prism-code',
   '.hljs',
   '[class*="codeBlock"]',
   '[class*="code-block"]',
+  // icon fonts
   '.material-icons',
   '.material-symbols-outlined',
   '[class^="material-symbols-"]',
@@ -92,9 +113,38 @@ export const NO_TRANSLATE_PATTERNS: RegExp[] = [
   /^#\w+$/,
 ];
 
-/** Minimum size for a node to be worth a request, mirroring the upstream gates. */
+/** Minimum size for a node to be worth a request. */
 export const MIN_TEXT_LENGTH = 4;
 export const MIN_BLOCK_TEXT_LENGTH = 12;
+
+/**
+ * Threshold separating prose from interface text.
+ *
+ * Prose gets its translation on its own line. Interface text — buttons, labels,
+ * nav items, badges — gets it appended on the same line, because those sit in
+ * containers sized to their contents: a second line makes the box grow
+ * vertically and collide with whatever is laid out beneath it, whereas growing
+ * horizontally is what such a container already expects to do.
+ */
+export const BLOCK_MIN_TEXT_COUNT = 24;
+export const BLOCK_MIN_WORD_COUNT = 4;
+/** CJK packs far more meaning per character, so its threshold is lower. */
+export const CJK_MIN_TEXT_COUNT = 12;
+
+/**
+ * Headings always get their own line regardless of length.
+ *
+ * A heading is content, not a control: it sits on a line of its own already,
+ * and appending the translation beside it reads as one run-on title.
+ */
+export const HEADING_SELECTORS = [
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  '[role="heading"]',
+  '.title',
+  '.headline',
+  '.article-title',
+  '.post-title',
+].join(',');
 
 /** Wrapper tag: `<font>` carries no default styling and is rarely targeted by site CSS. */
 export const WRAPPER_TAG = 'font';

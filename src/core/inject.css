@@ -8,7 +8,6 @@
  */
 
 :root {
-  --aetm-divider: #94a3b8;
   --aetm-border: #94a3b8;
   --aetm-marker: 251, 218, 65;
   --aetm-error: #dc2626;
@@ -17,7 +16,6 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --aetm-divider: #64748b;
     --aetm-border: #64748b;
     --aetm-dot: #94a3b8;
   }
@@ -27,16 +25,30 @@
   word-break: break-word;
   user-select: text;
   font-feature-settings: normal;
+  /* Never let a translation be wider than the box it was placed in. */
+  max-width: 100%;
 }
 
+/* Prose: the translation takes its own line under the original. */
 .aetm-target-block {
   display: block !important;
-  margin-top: 0.35em;
+  margin-top: 0.3em;
 }
 
+/*
+ * Interface text: the translation continues on the same line. Buttons, labels,
+ * and badges live in containers sized to their contents, so a second line
+ * grows the box downward into its neighbours. Staying inline grows it sideways
+ * instead, which such a container already handles.
+ */
 .aetm-target-inline {
   display: inline;
-  margin-left: 0.35em;
+  /* A real space rather than a margin, so it survives inside flex and grid
+     containers where margins on an inline box are ignored. */
+  white-space: normal;
+}
+.aetm-target-inline::before {
+  content: ' ';
 }
 
 /* Original view keeps the DOM intact but shows nothing of ours. */
@@ -50,28 +62,9 @@ html[aetm-state='original'] .aetm-target-wrapper {
 
 /* --- themes ------------------------------------------------------------- */
 
-.aetm-theme-dividingLine.aetm-target-block::before {
-  content: '';
-  display: block;
-  width: 10%;
-  max-width: 80px;
-  border-top: 1px dashed var(--aetm-divider);
-  padding-top: 8px;
-}
-
-.aetm-theme-dividingLine.aetm-target-inline::before {
-  content: '';
-  display: inline-block;
-  border-left: 1px dashed var(--aetm-divider);
-  height: 1em;
-  vertical-align: -0.15em;
-  margin-right: 0.4em;
-}
-
-.aetm-theme-dashedBorder {
+.aetm-theme-dashedBorder.aetm-target-block {
   border: 1px dashed var(--aetm-border);
   padding: 0.4em 0.6em;
-  display: block !important;
   margin-top: 0.5em;
 }
 

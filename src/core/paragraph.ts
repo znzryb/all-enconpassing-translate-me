@@ -14,6 +14,7 @@ import {
   BLOCK_MIN_TEXT_COUNT, BLOCK_MIN_WORD_COUNT, CJK_MIN_TEXT_COUNT,
   HEADING_SELECTORS, CLS,
 } from './dom-rules';
+import { looksLikeCode } from './code-detect';
 
 export interface Unit {
   id: number;
@@ -91,11 +92,13 @@ function walk(el: Element, out: Unit[]): void {
     if (DROP_TAGS.has(child_.tagName)) continue;
 
     // Untranslatable *block* content ends the paragraph just as any block
-    // would, but is not descended into and never becomes a placeholder. A code
-    // listing is not part of the sentence next to it.
+    // would. A code listing is not part of the sentence next to it.
     if (BLOCK_OPAQUE_TAGS.has(child_.tagName)) {
       sawBlockChild = true;
       flush();
+      // A <pre> holding prose rather than code — an input/output spec, English
+      // pseudocode — is content, so it is walked into like any other container.
+      if (!isUntranslatableBlock(child_)) walk(child_, out);
       continue;
     }
 
@@ -255,9 +258,24 @@ export function deserialize(translated: string, marks: Mark[]): string {
   return html.replace(/<\/?b\d+(?:\s[^>]*?)?\s*\/?>/g, '');
 }
 
+/**
+ * Whether a block-level element holds content no one should translate.
+ *
+ * Every tag in `BLOCK_OPAQUE_TAGS` qualifies except `<pre>`, which is decided
+ * by what is inside it: "preformatted" is a typographic claim, not a statement
+ * that the content is source code.
+ */
+function isUntranslatableBlock(el: Element): boolean {
+  if (!BLOCK_OPAQUE_TAGS.has(el.tagName)) return false;
+  if (el.tagName !== 'PRE') return true;
+  // A syntax-highlighted listing announces itself; no need to read it.
+  if (safeMatches(el, SKIP_SELECTORS)) return true;
+  return looksLikeCode(el.textContent ?? '');
+}
+
 function shouldSkipElement(el: Element): boolean {
   if (DROP_TAGS.has(el.tagName) || OPAQUE_TAGS.has(el.tagName)) return true;
-  if (BLOCK_OPAQUE_TAGS.has(el.tagName)) return true;
+  if (isUntranslatableBlock(el)) return true;
   if (el.classList.contains(CLS.wrapper) || el.closest(`.${CLS.wrapper}`)) return true;
   if (safeMatches(el, SKIP_SELECTORS)) return true;
   if ((el as HTMLElement).isContentEditable) return true;

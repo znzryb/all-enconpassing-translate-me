@@ -78,7 +78,6 @@ export const SKIP_SELECTORS = [
   '[role="code"]',
   '[data-aetm-skip]',
   'code',
-  'pre',
   // maths, across every renderer in common use
   '.katex',
   '.katex-display',
@@ -104,16 +103,6 @@ export const SKIP_SELECTORS = [
   'i[class^="fa-"]',
 ].join(',');
 
-/**
- * Selectors worth translating even though the generic scan skips their
- * container (nav/header/footer are excluded by default, titles are not).
- */
-export const EXTRA_SELECTORS = [
-  'h1', 'h2', 'h3', 'h4',
-  '.article-title', '.article__title', '.articleTitle',
-  '.headline', '.summary', '.subtitle',
-];
-
 /** Text that is structurally uninteresting: timestamps, counters, glyphs. */
 export const NO_TRANSLATE_PATTERNS: RegExp[] = [
   /^\d+\s*\S*\s*ago$/i,
@@ -127,7 +116,6 @@ export const NO_TRANSLATE_PATTERNS: RegExp[] = [
 
 /** Minimum size for a node to be worth a request. */
 export const MIN_TEXT_LENGTH = 4;
-export const MIN_BLOCK_TEXT_LENGTH = 12;
 
 /**
  * Threshold separating prose from interface text.

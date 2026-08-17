@@ -267,12 +267,13 @@ describe('code blocks are boundaries, not inline content', () => {
       '<div><pre>dp():\n  Let q be an empty queue\n  Return counter</pre>' +
         'Note that the same vertex may be pushed into the queue multiple times.</div>',
     );
-    expect(units).toHaveLength(1);
-    expect(units[0]!.text).toBe(
+    const note = units.find((u) => u.text.startsWith('Note that'))!;
+    expect(note).toBeDefined();
+    expect(note.container.tagName).not.toBe('PRE');
+    // The listing must not be carried along inside the sentence's unit.
+    expect(note.html).toBe(
       'Note that the same vertex may be pushed into the queue multiple times.',
     );
-    expect(units[0]!.html).not.toContain('b0');
-    expect(units[0]!.html).not.toContain('empty queue');
   });
 
   it('does not merge a pre block into the preceding text', () => {
@@ -316,5 +317,56 @@ describe('marker robustness', () => {
     const units = scan('<p>Run <code>fn()</code> before the retry.</p>');
     const restored = deserialize('先运行 <b0 lang="en"/>。', units[0]!.marks);
     expect(restored).toContain('aetm-slot data-n="0"');
+  });
+});
+
+describe('a <pre> holding prose is translated', () => {
+  // <pre> means "preformatted", not "source code". Judges set their input and
+  // output specifications in one, and those are written for a human to read.
+  const SPEC =
+    'Output the answer for each test case in order.\n\n' +
+    'If no valid construction exists, output a single line containing the integer -1.\n\n' +
+    'Otherwise, first output a line containing two integers n and m, the number of\n' +
+    'vertices and edges in the constructed graph, respectively.';
+
+  it('translates an output specification set in a pre', () => {
+    const units = scan(`<pre>${SPEC}</pre>`);
+    expect(units.length).toBeGreaterThan(0);
+    expect(units[0]!.text).toContain('Output the answer for each test case');
+    expect(units[0]!.container.tagName).toBe('PRE');
+  });
+
+  it('keeps line structure in the text handed to the model', () => {
+    const units = scan(`<pre>${SPEC}</pre>`);
+    // Newlines must survive: the translation is rendered inside the <pre>,
+    // where they are what preserves the layout.
+    expect(units[0]!.html).toContain('\n');
+  });
+
+  it('still leaves real source code alone', () => {
+    const cpp =
+      '#include <iostream>\nusing namespace std;\n\nvoid solve() {\n    long long k;\n    cin >> k;\n}';
+    expect(scan(`<pre>${cpp}</pre>`)).toHaveLength(0);
+    expect(scan(`<pre><code>${cpp}</code></pre>`)).toHaveLength(0);
+  });
+
+  it('leaves a syntax-highlighted listing alone without reading it', () => {
+    const units = scan(
+      '<pre class="highlight">Let this look like ordinary English prose here.</pre>',
+    );
+    expect(units).toHaveLength(0);
+  });
+
+  it('does not translate sample input data', () => {
+    expect(scan('<pre>3\n1 2\n2 3\n1 3</pre>')).toHaveLength(0);
+  });
+
+  it('handles formulas inside a prose pre', () => {
+    const units = scan(
+      '<pre>The first line contains an integer <span class="katex">t</span>, ' +
+        'the number of test cases in this file.</pre>',
+    );
+    expect(units).toHaveLength(1);
+    expect(units[0]!.html).toContain('<b0/>');
   });
 });

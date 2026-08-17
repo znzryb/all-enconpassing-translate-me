@@ -22,7 +22,10 @@ The whole extension is 81 KB.
 - **Video subtitles.** Turn captions on in the player and get a bilingual
   overlay. Works on YouTube and anything else serving WebVTT, TTML, or SRT.
 - **Keeps code and formatting intact.** Links, emphasis, code spans, and math
-  are shielded from the model and restored afterwards.
+  are shielded from the model and restored afterwards, byte for byte.
+- **Knows prose from code.** A `<pre>` holding an input/output specification or
+  English pseudocode is translated; an actual source listing or a block of
+  sample data is left alone.
 - **Caches.** A revisit or a scroll back up costs no tokens.
 
 ## Install
@@ -111,6 +114,9 @@ deliberately diverges.
   the extension listens for.
 - No per-site rules yet. The generic splitter handles article-shaped pages well;
   a heavily custom app may translate too much or too little.
+- Telling a prose `<pre>` from a code one is a heuristic over line shape. It is
+  deliberately biased towards leaving code alone, so an unusual listing may go
+  untranslated rather than risk mangling one.
 - Chrome/Edge (MV3) only so far; Firefox support is a WXT config change plus
   testing.
 - PDFs, images, and EPUBs are out of scope.

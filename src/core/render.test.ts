@@ -112,3 +112,26 @@ describe('display state', () => {
     expect(document.body.textContent).toContain('An ordinary English sentence.');
   });
 });
+
+describe('translations inside a preformatted block', () => {
+  const SPEC =
+    'Output the answer for each test case in order.\n\n' +
+    'If no valid construction exists, output -1 on a single line.';
+
+  it('renders the translation inside the pre, keeping its line breaks', () => {
+    const { wrapper } = roundTrip(
+      `<pre>${SPEC}</pre>`,
+      '按顺序输出每个测试用例的答案。\n\n如果不存在有效的构造，则单独一行输出 -1。',
+    );
+    // Living inside the <pre> is what makes the newlines render as line
+    // breaks, since it inherits white-space: pre.
+    expect(wrapper.closest('pre')).not.toBeNull();
+    expect(wrapper.textContent).toContain('\n\n');
+    expect(wrapper.textContent).toContain('按顺序输出');
+  });
+
+  it('gives the translation its own line rather than appending inline', () => {
+    const { wrapper } = roundTrip(`<pre>${SPEC}</pre>`, '译文内容在这里，足够长可以独立成块。');
+    expect(wrapper.classList.contains('aetm-target-block')).toBe(true);
+  });
+});

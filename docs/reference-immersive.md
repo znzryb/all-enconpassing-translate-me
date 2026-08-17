@@ -107,7 +107,37 @@ translating the whole page or only what is on screen.
 drained in document order so each request's paragraphs are adjacent and the
 model gets genuine context.
 
-## 6. Video subtitles
+## 6. Deciding whether a `<pre>` is code
+
+`<pre>` means "preformatted", not "source code". Judges set their input/output
+specifications in one, docs use it for ASCII tables, and pseudocode written in
+English lives there too — all of it worth translating. Real source code is not.
+
+Their answer is a hand-maintained table. `PRE` sits in the global
+`excludeTags`, and **44 site rules** take it back out with
+`excludeTags.remove`. Two supporting knobs appear alongside it:
+
+- `likePreSelectors` (21 sites) marks elements that must keep their whitespace
+  even when they are not `<pre>` — Twitter lists `[data-testid=tweetText]`,
+  because tweet line breaks are meaningful.
+- `isTransformPreTagNewLine` (31 sites) converts newlines to `<br>` so the
+  layout survives translation.
+
+**What we do:** a rule table is not reproducible here, so the decision is made
+from the content (`src/core/code-detect.ts`): classify each line as code or
+prose and let the majority win. Code lines are recognised by statement
+terminators, braces doing structural work, declarations, preprocessor
+directives, shell prompts, and operators that essentially never occur in prose;
+prose lines by carrying three or more plain words. Ties go to "code", because
+translating a listing is a visible corruption whereas leaving prose
+untranslated is only a missed opportunity.
+
+Line breaks need no `<br>` transform in our case: the translation is rendered
+*inside* the `<pre>`, so it inherits `white-space: pre` and the newlines in the
+model's reply lay themselves out. The system prompt asks for line structure to
+be preserved.
+
+## 7. Video subtitles
 
 The nicest trick in the extension, in `video-subtitle/inject.js`.
 

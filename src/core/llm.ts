@@ -81,11 +81,15 @@ function systemPrompt(opts: TranslateOptions, count: number): string {
     '4. The text may contain markers like <b0>, <b1>, or <b2/>. They mark inline formatting and untranslatable content.',
     '   Reproduce every marker exactly, with the same numbers, wrapping the corresponding part of your translation.',
     '   Never translate, renumber, drop, or invent a marker.',
+    // Preformatted blocks are rendered where line breaks carry the layout, so
+    // a translation that reflows into one paragraph destroys the formatting.
+    '5. Preserve line structure. If a segment spans several lines or contains blank lines,',
+    '   the translation must use the same line breaks in the same places.',
   ];
 
   if (opts.subtitle) {
     lines.push(
-      '5. This is a video subtitle: keep each line short and spoken in register. Do not merge or split lines.',
+      '6. This is a video subtitle: keep each line short and spoken in register. Do not merge or split lines.',
     );
   }
 

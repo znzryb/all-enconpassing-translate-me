@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Translate Me — Settings</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <img src="/icon/96.png" alt="" width="42" height="42" />
+        <div>
+          <h1>All-Encompassing Translate Me</h1>
+          <p>Bilingual web translation powered by your own AI key.</p>
+        </div>
+      </header>
+
+      <section>
+        <h2>Engine</h2>
+        <p class="hint">
+          DeepSeek and OpenAI share the same API shape, so any OpenAI-compatible
+          endpoint works here too.
+        </p>
+
+        <div class="tabs" id="provider-tabs" role="tablist"></div>
+
+        <label class="field">
+          <span>API key</span>
+          <div class="with-btn">
+            <input type="password" id="api-key" placeholder="sk-…" autocomplete="off" spellcheck="false" />
+            <button id="reveal" class="ghost" type="button">Show</button>
+          </div>
+          <small id="key-hint"></small>
+        </label>
+
+        <label class="field">
+          <span>API base URL</span>
+          <input type="text" id="base-url" placeholder="https://api.deepseek.com/v1" spellcheck="false" />
+          <small>The <code>/chat/completions</code> path is appended automatically.</small>
+        </label>
+
+        <label class="field">
+          <span>Model</span>
+          <input type="text" id="model" list="model-suggestions" placeholder="deepseek-v4-flash" spellcheck="false" />
+          <datalist id="model-suggestions"></datalist>
+        </label>
+
+        <div class="actions">
+          <button id="test" class="primary" type="button">Test connection</button>
+          <span id="test-result"></span>
+        </div>
+      </section>
+
+      <section>
+        <h2>Translation</h2>
+
+        <label class="field">
+          <span>Target language</span>
+          <select id="lang"></select>
+        </label>
+
+        <label class="field">
+          <span>Style</span>
+          <select id="theme">
+            <option value="dividingLine">Divider line</option>
+            <option value="plain">Plain</option>
+            <option value="dashedBorder">Dashed box</option>
+            <option value="marker">Highlighter</option>
+            <option value="weakened">Dimmed</option>
+          </select>
+          <small>How the translation is set apart from the original text.</small>
+        </label>
+
+        <label class="field switch">
+          <span>Skip text already in the target language</span>
+          <input type="checkbox" id="skip-same" />
+        </label>
+
+        <label class="field switch">
+          <span>Translate video subtitles</span>
+          <input type="checkbox" id="subtitles" />
+          <small>Turn captions on in the player; the track is picked up from there.</small>
+        </label>
+
+        <label class="field">
+          <span>Extra instructions</span>
+          <textarea id="extra-prompt" rows="3" placeholder="e.g. Keep a casual tone. Translate &quot;transformer&quot; as 变换器."></textarea>
+          <small>Appended to the system prompt on every request.</small>
+        </label>
+      </section>
+
+      <section>
+        <h2>Sites</h2>
+        <label class="field">
+          <span>Always translate</span>
+          <textarea id="auto-hosts" rows="3" placeholder="news.ycombinator.com&#10;*.arxiv.org"></textarea>
+          <small>One host per line. <code>*.example.com</code> covers subdomains.</small>
+        </label>
+        <label class="field">
+          <span>Never translate</span>
+          <textarea id="blocked-hosts" rows="3" placeholder="mail.google.com"></textarea>
+        </label>
+      </section>
+
+      <section>
+        <h2>Performance</h2>
+        <label class="field range">
+          <span>Paragraphs per request <output id="batch-out"></output></span>
+          <input type="range" id="batch" min="1" max="12" step="1" />
+          <small>Larger batches cost fewer requests and give the model more context.</small>
+        </label>
+        <label class="field range">
+          <span>Concurrent requests <output id="conc-out"></output></span>
+          <input type="range" id="concurrency" min="1" max="8" step="1" />
+        </label>
+        <label class="field range">
+          <span>Translate ahead <output id="look-out"></output></span>
+          <input type="range" id="lookahead" min="0" max="4" step="0.5" />
+          <small>How far past the viewport to translate, in screen heights.</small>
+        </label>
+        <label class="field switch">
+          <span>Cache translations</span>
+          <input type="checkbox" id="cache" />
+          <small>Revisits and re-scrolls cost no tokens. <button id="clear-cache" class="link" type="button">Clear now</button></small>
+        </label>
+      </section>
+
+      <footer>
+        <span id="saved">Changes save automatically.</span>
+        <kbd>⌥A</kbd> translate &nbsp;·&nbsp; <kbd>⌥W</kbd> cycle view
+      </footer>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

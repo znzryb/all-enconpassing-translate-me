@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>All-Encompassing Translate Me</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <img src="/icon/48.png" alt="" width="26" height="26" />
+      <div class="titles">
+        <strong>Translate Me</strong>
+        <span id="host">—</span>
+      </div>
+      <button id="settings" class="icon-btn" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.36.4.66.73.86.32.2.7.3 1.08.29H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
+    </header>
+
+    <div id="setup" class="notice hidden">
+      <p>No API key yet. Add a DeepSeek or OpenAI key to start translating.</p>
+      <button id="setup-btn" class="primary small">Open settings</button>
+    </div>
+
+    <main id="main">
+      <button id="toggle" class="primary">
+        <span id="toggle-label">Translate this page</span>
+        <kbd>⌥A</kbd>
+      </button>
+
+      <div class="seg" role="group" aria-label="Display mode">
+        <button data-state="dual">Bilingual</button>
+        <button data-state="translation">Translation</button>
+        <button data-state="original">Original</button>
+      </div>
+
+      <label class="row">
+        <span>Translate into</span>
+        <select id="lang"></select>
+      </label>
+
+      <label class="row">
+        <span>Engine</span>
+        <select id="provider"></select>
+      </label>
+
+      <label class="row switch">
+        <span>Always translate this site</span>
+        <input type="checkbox" id="auto" />
+      </label>
+
+      <label class="row switch">
+        <span>Never translate this site</span>
+        <input type="checkbox" id="blocked" />
+      </label>
+
+      <footer>
+        <span id="status">Idle</span>
+        <kbd title="Cycle bilingual / translation / original">⌥W</kbd>
+      </footer>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

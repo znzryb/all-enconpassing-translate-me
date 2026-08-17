@@ -178,9 +178,12 @@ interface ChatMessage {
 /** Per-model request-body quirks, kept in one place. */
 function bodyOverrides(model: string): Record<string, unknown> {
   const m = model.toLowerCase();
-  // Reasoning models reject `temperature` and waste tokens thinking about a
-  // translation, so effort is pinned as low as each family allows.
+  // Reasoning burns tokens and latency on a task that needs none, so it is
+  // switched off wherever the family exposes a knob for it.
   if (/^(o[1-4]|gpt-5)/.test(m)) return { reasoning_effort: 'minimal' };
+  // DeepSeek V4 thinks by default; `temperature` is still honoured.
+  if (/^deepseek-v4/.test(m)) return { temperature: 0.3, thinking: { type: 'disabled' } };
+  // Reasoner has no off switch and rejects temperature.
   if (/deepseek-(reasoner|r1)/.test(m)) return {};
   if (/^qwen3/.test(m)) return { temperature: 0.3, enable_thinking: false };
   return { temperature: 0.3 };

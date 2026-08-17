@@ -71,6 +71,10 @@ function walk(el: Element, out: Unit[]): void {
 
     const child_ = child as Element;
     if (isInline(child_) && !hasBlockDescendant(child_)) {
+      // Our own wrappers are inline <font> elements sitting right beside the
+      // source. Without this guard a rescan would collect the translation as
+      // source text and translate it again on every mutation.
+      if (child_.classList.contains(CLS.wrapper)) continue;
       run.push(child_);
     } else {
       sawBlockChild = true;

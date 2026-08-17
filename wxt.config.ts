@@ -12,6 +12,10 @@ export default defineConfig({
     action: {
       default_title: 'All-Encompassing Translate Me',
     },
+    // The settings page is long; a popup-sized frame would scroll awkwardly.
+    options_ui: {
+      open_in_tab: true,
+    },
     commands: {
       'toggle-translate': {
         suggested_key: { default: 'Alt+A' },

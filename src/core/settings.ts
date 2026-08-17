@@ -42,7 +42,7 @@ export const PROVIDER_PRESETS: Record<ProviderId, { label: string; baseUrl: stri
   deepseek: {
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
+    model: 'deepseek-v4-flash',
     docs: 'https://platform.deepseek.com/api_keys',
   },
   openai: {

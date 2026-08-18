@@ -90,6 +90,12 @@ function systemPrompt(opts: TranslateOptions, count: number): string {
   if (opts.subtitle) {
     lines.push(
       '6. This is a video subtitle: keep each line short and spoken in register. Do not merge or split lines.',
+      // Auto-generated captions arrive as unpunctuated fragments, and a fragment
+      // that says almost nothing leaves the title as the only thing to lean on.
+      // Models fill the gap by writing about the title instead of the line.
+      '7. Translate only what each segment says. A segment may be a fragment, or filler like "okay so" —',
+      '   render it as the fragment or filler it is. Never complete it, and never pull in the subject of the',
+      '   title or of neighbouring segments to make it read as a whole sentence.',
     );
   }
 

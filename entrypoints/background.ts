@@ -3,7 +3,7 @@ import {
   SegmentMismatchError, TranslateError, translateBatch, type TranslateOptions,
 } from '../src/core/llm';
 import { activeProvider, loadSettings } from '../src/core/settings';
-import type { Message, TranslateResponse } from '../src/shared/messages';
+import type { Message, TranslateJob, TranslateResponse } from '../src/shared/messages';
 
 export default defineBackground(() => {
   void initCache();
@@ -77,12 +77,7 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
  * time — slower, but it always terminates and never misaligns a translation
  * onto the wrong paragraph, which is the one failure a reader would notice.
  */
-async function handleTranslate(job: {
-  texts: string[];
-  targetLang: string;
-  title?: string;
-  subtitle?: boolean;
-}): Promise<TranslateResponse> {
+async function handleTranslate(job: TranslateJob): Promise<TranslateResponse> {
   const settings = await loadSettings();
   const provider = activeProvider(settings);
   if (!provider.apiKey) return { ok: false, error: 'No API key configured' };
@@ -99,7 +94,9 @@ async function handleTranslate(job: {
 
   for (let i = 0; i < job.texts.length; i++) {
     const text = job.texts[i]!;
-    const hit = settings.cacheEnabled ? cacheGet(text, job.targetLang, provider.model) : undefined;
+    const hit = settings.cacheEnabled
+      ? cacheGet(text, job.targetLang, provider.model, job.scope)
+      : undefined;
     if (hit !== undefined) results[i] = hit;
     else pending.push(i);
   }
@@ -132,7 +129,9 @@ async function handleTranslate(job: {
       const value = translations[k];
       if (value === undefined) continue;
       results[index] = value;
-      if (settings.cacheEnabled) cacheSet(job.texts[index]!, job.targetLang, provider.model, value);
+      if (settings.cacheEnabled) {
+        cacheSet(job.texts[index]!, job.targetLang, provider.model, value, job.scope);
+      }
     }
   }
 

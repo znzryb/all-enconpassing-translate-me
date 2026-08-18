@@ -7,6 +7,12 @@ export interface TranslateJob {
   targetLang: string;
   title?: string;
   subtitle?: boolean;
+  /**
+   * Narrows the cache key. Set where the same source text translates
+   * differently depending on surrounding context — subtitles pass the video's
+   * identity so one video's wording is never replayed over another's.
+   */
+  scope?: string;
 }
 
 export type Message =

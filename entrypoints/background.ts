@@ -3,8 +3,14 @@ import { activeProvider, loadSettings } from '../src/core/settings';
 import { errorText, handleTranslate, testConnection } from '../src/core/translate-job';
 import type { Message, TranslateResponse } from '../src/shared/messages';
 
-/** Marks the one-off cleanup of pre-fix cache entries as done. */
-const PRUNE_FLAG = 'aetm:pruned:v1';
+/**
+ * Marks the one-off cleanup of pre-fix cache entries as done.
+ *
+ * Bumped when a new way of storing a non-translation is found, so the sweep
+ * runs again: v2 clears the literal "<blank>" segments a model emitted to pad
+ * a batch to the requested count.
+ */
+const PRUNE_FLAG = 'aetm:pruned:v2';
 
 export default defineBackground(() => {
   void initCache().then(pruneStaleEchoes);

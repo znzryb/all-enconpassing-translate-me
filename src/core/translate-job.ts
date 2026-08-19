@@ -73,7 +73,10 @@ export async function handleTranslate(job: TranslateJob): Promise<TranslateRespo
     for (let k = 0; k < pending.length; k++) {
       const index = pending[k]!;
       const value = translations[k];
-      if (value === undefined) continue;
+      // Blank covers both a failed line and a placeholder the model used to pad
+      // the segment count. Leaving the slot empty falls back to the source and
+      // keeps the cache clean, so the line is retried rather than frozen.
+      if (value === undefined || !value.trim()) continue;
       results[index] = value;
       if (settings.cacheEnabled) {
         cacheSet(job.texts[index]!, job.targetLang, provider.model, value, job.scope);

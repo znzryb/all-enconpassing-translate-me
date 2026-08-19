@@ -71,33 +71,46 @@ export function langName(code: string): string {
 
 function systemPrompt(opts: TranslateOptions, count: number): string {
   const to = langName(opts.targetLang);
+  const rules = [
+    'Output the translation only. Never add notes, explanations, or preambles.',
+    `Write natural, idiomatic ${to} — translate the meaning, not the word order.`,
+    'Keep proper nouns, product names, code identifiers, URLs, and numbers as they are.',
+  ];
+
+  if (opts.subtitle) {
+    // Captions are plain text, so the marker and line-structure rules below do
+    // not apply — and mentioning angle-bracket markers to a model that has none
+    // invites it to invent one, which is where "<blank>" came from.
+    rules.push(
+      'This is a video subtitle: keep each line short and spoken in register. Do not merge or split lines.',
+      // Auto-generated captions arrive as unpunctuated fragments, and a fragment
+      // that says almost nothing leaves the title as the only thing to lean on.
+      // Models fill the gap by writing about the title instead of the line.
+      'Translate only what each segment says. A segment may be a fragment, or filler like "okay so" —\n' +
+        'render it as the fragment or filler it is. Never complete it, and never pull in the subject of the\n' +
+        'title or of neighbouring segments to make it read as a whole sentence.',
+    );
+  } else {
+    rules.push(
+      'The text may contain markers like <b0>, <b1>, or <b2/>. They mark inline formatting and untranslatable content.\n' +
+        'Reproduce every marker exactly, with the same numbers, wrapping the corresponding part of your translation.\n' +
+        'Never translate, renumber, drop, or invent a marker.',
+      // Preformatted blocks are rendered where line breaks carry the layout, so
+      // a translation that reflows into one paragraph destroys the formatting.
+      'Preserve line structure. If a segment spans several lines or contains blank lines,\n' +
+        'the translation must use the same line breaks in the same places.',
+    );
+  }
+
   const lines = [
     `You are a professional translator. Translate the user's text into ${to}.`,
     '',
     'Rules:',
-    `1. Output the translation only. Never add notes, explanations, or preambles.`,
-    `2. Write natural, idiomatic ${to} — translate the meaning, not the word order.`,
-    '3. Keep proper nouns, product names, code identifiers, URLs, and numbers as they are.',
-    '4. The text may contain markers like <b0>, <b1>, or <b2/>. They mark inline formatting and untranslatable content.',
-    '   Reproduce every marker exactly, with the same numbers, wrapping the corresponding part of your translation.',
-    '   Never translate, renumber, drop, or invent a marker.',
-    // Preformatted blocks are rendered where line breaks carry the layout, so
-    // a translation that reflows into one paragraph destroys the formatting.
-    '5. Preserve line structure. If a segment spans several lines or contains blank lines,',
-    '   the translation must use the same line breaks in the same places.',
+    ...rules.map((rule, i) => {
+      const [head, ...rest] = rule.split('\n');
+      return [`${i + 1}. ${head}`, ...rest.map((l) => `   ${l}`)].join('\n');
+    }),
   ];
-
-  if (opts.subtitle) {
-    lines.push(
-      '6. This is a video subtitle: keep each line short and spoken in register. Do not merge or split lines.',
-      // Auto-generated captions arrive as unpunctuated fragments, and a fragment
-      // that says almost nothing leaves the title as the only thing to lean on.
-      // Models fill the gap by writing about the title instead of the line.
-      '7. Translate only what each segment says. A segment may be a fragment, or filler like "okay so" —',
-      '   render it as the fragment or filler it is. Never complete it, and never pull in the subject of the',
-      '   title or of neighbouring segments to make it read as a whole sentence.',
-    );
-  }
 
   if (count > 1) {
     lines.push(
@@ -106,6 +119,9 @@ function systemPrompt(opts: TranslateOptions, count: number): string {
       `Return exactly ${count} translated segments separated the same way, in the same order.`,
       'Never merge, split, reorder, drop, or add a segment — the count must match exactly.',
       'If a segment needs no translation, repeat it unchanged rather than omitting it.',
+      // Asking for an exact count invites padding: a model that merged two
+      // segments will invent a filler segment so the arithmetic works out.
+      'Never emit a placeholder such as <blank>, (empty), or N/A to make the count come out right.',
       '',
       'Example input:',
       'Segment one',
@@ -141,6 +157,17 @@ const JUNK_PATTERNS: RegExp[] = [
   /^(译文|翻译)(如下)?[:：]\s*/,
 ];
 
+/**
+ * Fillers a model emits when it has nothing to put in a segment.
+ *
+ * Requesting an exact segment count practically guarantees these: having
+ * merged two captions, the model still owes one more segment and invents one.
+ * Matched whole-segment only, so a translation that merely contains the word
+ * survives.
+ */
+const PLACEHOLDER_RE =
+  /^[<([{【（]?\s*(?:blank|empty|null|none|n\/?a|no\s+(?:text|translation|content|input)|untranslated|placeholder|无内容|无需翻译|空白)\s*[>)\]}】）]?$/i;
+
 function cleanSegment(text: string): string {
   let out = text.trim();
   // Models sometimes fence the whole reply even when told not to.
@@ -153,6 +180,9 @@ function cleanSegment(text: string): string {
   for (const re of JUNK_PATTERNS) {
     if (re.test(out)) out = out.replace(re, '').trim();
   }
+  // Placeholder padding carries no translation; empty says so honestly, and
+  // callers already know to fall back to the source for an empty segment.
+  if (PLACEHOLDER_RE.test(out)) return '';
   return out;
 }
 

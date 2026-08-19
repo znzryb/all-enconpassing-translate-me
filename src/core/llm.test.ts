@@ -132,3 +132,62 @@ describe('errors', () => {
     await expect(translateBatch(['x'], opts)).rejects.toThrow(/Empty response/);
   });
 });
+
+/**
+ * Requesting an exact segment count invites a model that merged two captions
+ * to invent a filler segment so the arithmetic works out. The count check
+ * cannot see it — only the content is wrong — so the filler is recognised.
+ */
+describe('padding placeholders', () => {
+  const cases = ['<blank>', '(empty)', '[no translation]', 'N/A', 'blank', '无内容'];
+
+  for (const filler of cases) {
+    it(`treats ${filler} as no translation`, async () => {
+      vi.stubGlobal('fetch', reply(`真正的译文\n\n%%\n\n${filler}`));
+      expect(await translateBatch(['One', 'Two'], opts)).toEqual(['真正的译文', '']);
+    });
+  }
+
+  it('keeps a translation that merely contains the word', async () => {
+    vi.stubGlobal('fetch', reply('这一段是空白的说明'));
+    expect(await translateBatch(['A blank line'], opts)).toEqual(['这一段是空白的说明']);
+  });
+
+  it('tells the model not to pad the count', async () => {
+    const fetchMock = reply('一\n\n%%\n\n二');
+    vi.stubGlobal('fetch', fetchMock);
+    await translateBatch(['One', 'Two'], opts);
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body as string);
+    expect(body.messages[0].content).toContain('Never emit a placeholder');
+  });
+});
+
+describe('rules by mode', () => {
+  async function promptFor(options: TranslateOptions) {
+    const fetchMock = reply('译文');
+    vi.stubGlobal('fetch', fetchMock);
+    await translateBatch(['One'], options);
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body as string);
+    return body.messages[0].content as string;
+  }
+
+  /** Captions are plain text; describing markers invites the model to mint one. */
+  it('does not mention inline markers to a subtitle', async () => {
+    const prompt = await promptFor({ ...opts, subtitle: true });
+    expect(prompt).not.toContain('<b0>');
+    expect(prompt).toContain('video subtitle');
+  });
+
+  it('still explains inline markers for prose', async () => {
+    const prompt = await promptFor(opts);
+    expect(prompt).toContain('<b0>');
+  });
+
+  it('numbers the rules contiguously in either mode', async () => {
+    for (const options of [opts, { ...opts, subtitle: true }]) {
+      const prompt = await promptFor(options);
+      const numbers = [...prompt.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
+      expect(numbers).toEqual(numbers.map((_, i) => i + 1));
+    }
+  });
+});

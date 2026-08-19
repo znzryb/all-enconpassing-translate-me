@@ -200,11 +200,15 @@ export async function translateBatch(texts: string[], opts: TranslateOptions): P
 
   if (texts.length === 1) return [cleanSegment(reply)];
 
-  const parts = reply.split(SPLIT_RE).map(cleanSegment).filter((s, i, arr) => {
+  // Separator artefacts are judged on the raw text, before cleaning. A cleaned
+  // segment can be legitimately empty — that is what a placeholder becomes —
+  // and discarding it here would turn a well-formed reply into a count
+  // mismatch, sending the whole batch down the one-at-a-time retry path.
+  const raw = reply.split(SPLIT_RE);
+  const parts = raw
     // A leading or trailing empty part is a formatting artefact, not a segment.
-    if (s) return true;
-    return i !== 0 && i !== arr.length - 1;
-  });
+    .filter((s, i) => s.trim() !== '' || (i !== 0 && i !== raw.length - 1))
+    .map(cleanSegment);
 
   if (parts.length !== texts.length) throw new SegmentMismatchError(texts.length, parts.length);
   return parts;

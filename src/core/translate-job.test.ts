@@ -112,3 +112,24 @@ describe('a translation that fails', () => {
     expect(cacheGet('que tal', 'zh-CN', MODEL, 'www.youtube.com/AAA')).toBeUndefined();
   });
 });
+
+/**
+ * A placeholder reduces to an empty segment, which must not reach the cache:
+ * stored, it is indistinguishable from a real translation and the line would
+ * never be attempted again.
+ */
+describe('a segment the model padded', () => {
+  it('falls back to the source and is not cached', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ok('真正的译文\n\n%%\n\n<blank>')),
+    );
+
+    const res = await handleTranslate({ texts: ['Uno', 'Dos'], targetLang: 'zh-CN' });
+
+    expect(res.ok).toBe(true);
+    expect(res.translations).toEqual(['真正的译文', 'Dos']);
+    expect(cacheGet('Uno', 'zh-CN', MODEL)).toBe('真正的译文');
+    expect(cacheGet('Dos', 'zh-CN', MODEL)).toBeUndefined();
+  });
+});

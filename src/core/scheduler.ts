@@ -12,7 +12,7 @@
  * random sample of the page.
  */
 
-import { looksLikeLanguage, type Unit } from './paragraph';
+import { looksLikeLanguage, normalizeText, type Unit } from './paragraph';
 import { discard, renderError, renderPending, renderTranslation } from './render';
 import type { Settings } from './settings';
 import { sendToBackground } from '../shared/messages';
@@ -141,7 +141,7 @@ export class Scheduler {
         const translation = res.translations[i];
         // An unchanged reply means the model judged it already in the target
         // language; showing the same sentence twice is worse than showing none.
-        if (translation === undefined || normalize(translation) === normalize(unit.html)) {
+        if (translation === undefined || normalizeText(translation) === normalizeText(unit.html)) {
           discard(unit);
           continue;
         }
@@ -168,6 +168,3 @@ export class Scheduler {
   }
 }
 
-function normalize(s: string): string {
-  return s.replace(/\s+/g, ' ').trim();
-}

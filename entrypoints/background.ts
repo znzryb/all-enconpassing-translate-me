@@ -1,12 +1,15 @@
-import { initCache, cacheGet, cacheSet } from '../src/core/cache';
+import { initCache, cacheGet, cacheSet, pruneEchoedSources } from '../src/core/cache';
 import {
   SegmentMismatchError, TranslateError, translateBatch, type TranslateOptions,
 } from '../src/core/llm';
 import { activeProvider, loadSettings } from '../src/core/settings';
 import type { Message, TranslateJob, TranslateResponse } from '../src/shared/messages';
 
+/** Marks the one-off cleanup of pre-fix cache entries as done. */
+const PRUNE_FLAG = 'aetm:pruned:v1';
+
 export default defineBackground(() => {
-  void initCache();
+  void initCache().then(pruneStaleEchoes);
 
   chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
     if (message.type === 'translate') {
@@ -66,6 +69,22 @@ export default defineBackground(() => {
   });
 });
 
+/**
+ * Clears entries left behind by the version that cached failed translations as
+ * their own source. Runs once per installation rather than on every startup,
+ * since it walks the whole cache.
+ */
+async function pruneStaleEchoes(): Promise<void> {
+  try {
+    const stored = await chrome.storage.local.get(PRUNE_FLAG);
+    if (stored[PRUNE_FLAG]) return;
+    await pruneEchoedSources();
+    await chrome.storage.local.set({ [PRUNE_FLAG]: true });
+  } catch {
+    // Storage unavailable: leave the flag unset so a later start retries.
+  }
+}
+
 async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab;
@@ -76,6 +95,12 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
  * breaks the `%%` segment contract the batch is retried one paragraph at a
  * time — slower, but it always terminates and never misaligns a translation
  * onto the wrong paragraph, which is the one failure a reader would notice.
+ *
+ * A paragraph that fails even then resolves to `undefined` rather than to its
+ * own source text. The reply still carries the source so the caller has
+ * something to show, but nothing is written to the cache: an echoed source
+ * stored as a translation would be indistinguishable from a real one, and the
+ * paragraph would stay untranslated on every future visit.
  */
 async function handleTranslate(job: TranslateJob): Promise<TranslateResponse> {
   const settings = await loadSettings();
@@ -103,7 +128,7 @@ async function handleTranslate(job: TranslateJob): Promise<TranslateResponse> {
 
   if (pending.length) {
     const inputs = pending.map((i) => job.texts[i]!);
-    let translations: string[];
+    let translations: (string | undefined)[];
     try {
       translations = await translateBatch(inputs, opts);
     } catch (err) {
@@ -111,7 +136,7 @@ async function handleTranslate(job: TranslateJob): Promise<TranslateResponse> {
         return { ok: false, error: errorText(err) };
       }
       const settled = await Promise.allSettled(
-        inputs.map((text) => translateBatch([text], opts).then((r) => r[0] ?? text)),
+        inputs.map((text) => translateBatch([text], opts).then((r) => r[0])),
       );
       if (settled.every((r) => r.status === 'rejected')) {
         const first = settled[0];
@@ -121,7 +146,7 @@ async function handleTranslate(job: TranslateJob): Promise<TranslateResponse> {
           error: first?.status === 'rejected' ? errorText(first.reason) : 'Translation failed',
         };
       }
-      translations = settled.map((r, i) => (r.status === 'fulfilled' ? r.value : inputs[i]!));
+      translations = settled.map((r) => (r.status === 'fulfilled' ? r.value : undefined));
     }
 
     for (let k = 0; k < pending.length; k++) {

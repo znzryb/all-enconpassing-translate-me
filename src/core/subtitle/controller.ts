@@ -21,12 +21,18 @@
  */
 
 import { parseSubtitle, type Cue } from './parse';
-import { looksLikeLanguage } from '../paragraph';
+import { looksLikeLanguage, normalizeText } from '../paragraph';
 import type { Settings } from '../settings';
 import { sendToBackground, type TranslateResponse } from '../../shared/messages';
 
 const CHANNEL = 'aetm-subtitle';
-const BATCH = 8;
+/**
+ * Cues per request. Smaller than a page's paragraphs on purpose: auto-generated
+ * captions are unpunctuated half-sentences, and consecutive ones are usually
+ * one sentence cut in two, which is exactly what tempts a model to merge them
+ * and break the segment count. Immersive Translate lands on 4 as well.
+ */
+const BATCH = 4;
 /** Cues to keep translated ahead of the playhead. */
 const LOOKAHEAD = 60;
 
@@ -246,7 +252,15 @@ class SubtitleController {
           return;
         }
         batch.forEach((cue, k) => {
-          cue.translation = res.translations?.[k] ?? '';
+          const translation = res.translations?.[k];
+          // A reply identical to the input carries no translation: either the
+          // model judged the line already in the target language, or it failed
+          // and the background fell back to echoing the source. Storing it
+          // would paint the same sentence twice, one line above the other.
+          cue.translation =
+            translation === undefined || normalizeText(translation) === normalizeText(cue.text)
+              ? ''
+              : translation;
         });
       }
     } finally {

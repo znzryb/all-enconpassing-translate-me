@@ -131,3 +131,50 @@ export async function clearCache(): Promise<void> {
 export function cacheSize(): number {
   return memory.size;
 }
+
+/**
+ * Scripts distinctive enough that their absence in a translation proves the
+ * translation never happened. Latin-script targets are deliberately absent:
+ * a Spanish source echoed as a French "translation" is indistinguishable by
+ * script, so entries for those languages are left alone rather than guessed at.
+ */
+const TARGET_SCRIPT: Record<string, RegExp> = {
+  zh: /[\u4e00-\u9fff\u3400-\u4dbf]/,
+  ja: /[\u3040-\u30ff\u4e00-\u9fff]/,
+  ko: /[\uac00-\ud7af]/,
+  ru: /[\u0400-\u04ff]/,
+  ar: /[\u0600-\u06ff]/,
+  th: /[\u0e00-\u0e7f]/,
+  he: /[\u0590-\u05ff]/,
+  hi: /[\u0900-\u097f]/,
+};
+
+/**
+ * Drops entries that hold a source echoed back as its own translation.
+ *
+ * Failed requests used to be stored as the untranslated source, which is
+ * indistinguishable from a real result once written — the entry only holds the
+ * translation, never the input — so those lines stayed untranslated forever.
+ * The test is deliberately blunt: not one character of the target script. A
+ * proportional test would delete good work, since a technical translation runs
+ * heavy on Latin identifiers ("Recovery()", "Panic") around its Chinese.
+ *
+ * Each entry is judged against the language in its own key, so a cache holding
+ * several target languages prunes correctly.
+ */
+export async function pruneEchoedSources(): Promise<number> {
+  const doomed: string[] = [];
+  for (const [key, entry] of memory) {
+    const lang = key.slice(PREFIX.length).split(':')[0];
+    const script = lang ? TARGET_SCRIPT[lang.split('-')[0]!] : undefined;
+    if (!script) continue;
+    if (!script.test(entry.v)) doomed.push(key);
+  }
+  if (!doomed.length) return 0;
+  for (const key of doomed) {
+    memory.delete(key);
+    dirty.delete(key);
+  }
+  await chrome.storage.local.remove(doomed);
+  return doomed.length;
+}

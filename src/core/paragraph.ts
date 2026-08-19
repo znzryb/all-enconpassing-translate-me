@@ -338,6 +338,17 @@ function escapeText(s: string): string {
  * Cheap script-ratio language guess. Enough to answer "is this already the
  * target language?" without shipping a detection model.
  */
+/**
+ * Collapses whitespace for comparing two renderings of the same text.
+ *
+ * A model that returns its input unchanged rarely returns it byte-identical —
+ * spacing around markers and line breaks drift — so equality has to be judged
+ * on the words alone.
+ */
+export function normalizeText(s: string): string {
+  return s.replace(/\s+/g, ' ').trim();
+}
+
 export function looksLikeLanguage(text: string, lang: string): boolean {
   const letters = text.match(/\p{L}/gu);
   if (!letters?.length) return false;

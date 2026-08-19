@@ -53,20 +53,87 @@ describe('belongsToCurrentPage', () => {
   });
 });
 
+interface Harness {
+  frame: () => void;
+  deliver: (url: string, body: string) => Promise<void>;
+  layer: () => HTMLElement | null;
+  lines: () => (string | null)[];
+  seek: (seconds: number) => void;
+  requests: { texts: string[]; scope?: string }[];
+}
+
+/**
+ * A controller lives as long as its page, so nothing in production retires
+ * one. Across tests that leaks: every controller from an earlier case would
+ * also ingest the next track and draw an overlay of its own, and the document
+ * would end up with a stack of them.
+ */
+let retire: (() => void) | undefined;
+
+async function harness(translate: (text: string) => string = (t) => `[${t}]`): Promise<Harness> {
+  retire?.();
+  vi.resetModules();
+  document.head.innerHTML = '';
+  document.body.innerHTML = '<div id="movie_player"><video></video></div>';
+  const video = document.querySelector('video')!;
+  let currentTime = 0;
+  Object.defineProperty(video, 'currentTime', {
+    get: () => currentTime,
+    configurable: true,
+  });
+
+  let queue: FrameRequestCallback[] = [];
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => queue.push(cb));
+  vi.stubGlobal('cancelAnimationFrame', () => {});
+
+  const requests: { texts: string[]; scope?: string }[] = [];
+  vi.stubGlobal('chrome', {
+    runtime: {
+      sendMessage: (message: { job: { texts: string[]; scope?: string } }) => {
+        requests.push({ texts: message.job.texts, scope: message.job.scope });
+        return Promise.resolve({
+          ok: true,
+          translations: message.job.texts.map((t) => translate(t)),
+        });
+      },
+    },
+  });
+
+  const { installSubtitles: install } = await import('./controller');
+  retire = install(() =>
+    ({ subtitleEnabled: true, targetLang: 'zh-CN', skipSameLanguage: false }) as Settings,
+  );
+
+  return {
+    frame: () => {
+      const due = queue;
+      queue = [];
+      for (const cb of due) cb(0);
+    },
+    deliver: async (url, body) => {
+      const event = new MessageEvent('message', {
+        data: { source: 'aetm-subtitle', url, body },
+      });
+      Object.defineProperty(event, 'source', { value: window });
+      window.dispatchEvent(event);
+      await new Promise((r) => setTimeout(r, 0));
+    },
+    layer: () => document.querySelector<HTMLElement>('.aetm-caption-layer'),
+    lines: () =>
+      Array.from(document.querySelectorAll('.aetm-caption-line')).map((el) => el.textContent),
+    seek: (seconds) => {
+      currentTime = seconds;
+    },
+    requests,
+  };
+}
+
 /**
  * The bug this guards: players that navigate without a reload keep the same
  * `<video>` element, so nothing about the element says the video changed. The
  * overlay used to keep painting the previous video's lines over the new one.
  */
 describe('changing video', () => {
-  interface Harness {
-    frame: () => void;
-    deliver: (url: string, body: string) => Promise<void>;
-    layer: () => HTMLElement | null;
-    seek: (seconds: number) => void;
-    requests: { texts: string[]; scope?: string }[];
-  }
-
   const track = (lines: [number, string][]) =>
     JSON.stringify({
       events: lines.map(([tStartMs, text]) => ({
@@ -81,61 +148,6 @@ describe('changing video', () => {
     [3000, 'today we cover pipelining'],
     [6000, 'lets begin'],
   ]);
-
-  async function harness(): Promise<Harness> {
-    vi.resetModules();
-    document.head.innerHTML = '';
-    document.body.innerHTML = '<div id="movie_player"><video></video></div>';
-    const video = document.querySelector('video')!;
-    let currentTime = 0;
-    Object.defineProperty(video, 'currentTime', {
-      get: () => currentTime,
-      configurable: true,
-    });
-
-    let queue: FrameRequestCallback[] = [];
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => queue.push(cb));
-    vi.stubGlobal('cancelAnimationFrame', () => {});
-
-    const requests: { texts: string[]; scope?: string }[] = [];
-    vi.stubGlobal('chrome', {
-      runtime: {
-        sendMessage: (message: { job: { texts: string[]; scope?: string } }) => {
-          requests.push({ texts: message.job.texts, scope: message.job.scope });
-          return Promise.resolve({
-            ok: true,
-            translations: message.job.texts.map((t) => `[${t}]`),
-          });
-        },
-      },
-    });
-
-    const { installSubtitles: install } = await import('./controller');
-    install(() =>
-      ({ subtitleEnabled: true, targetLang: 'zh-CN', skipSameLanguage: false }) as Settings,
-    );
-
-    return {
-      frame: () => {
-        const due = queue;
-        queue = [];
-        for (const cb of due) cb(0);
-      },
-      deliver: async (url, body) => {
-        const event = new MessageEvent('message', {
-          data: { source: 'aetm-subtitle', url, body },
-        });
-        Object.defineProperty(event, 'source', { value: window });
-        window.dispatchEvent(event);
-        await new Promise((r) => setTimeout(r, 0));
-      },
-      layer: () => document.querySelector<HTMLElement>('.aetm-caption-layer'),
-      seek: (seconds) => {
-        currentTime = seconds;
-      },
-      requests,
-    };
-  }
 
   it('stops painting the old video once the page navigates', async () => {
     goTo('https://www.youtube.com/watch?v=AAA');
@@ -187,5 +199,52 @@ describe('changing video', () => {
 
     expect(h.requests.length).toBeGreaterThan(0);
     expect(h.requests[0]!.scope).toBe('www.youtube.com/AAA');
+  });
+});
+
+/**
+ * The bug this guards: a line whose translation failed came back as its own
+ * source text, and the overlay drew it as the translation — the same sentence
+ * twice, one line above the other.
+ */
+describe('a reply identical to the source', () => {
+  const LECTURE = JSON.stringify({
+    events: [
+      { tStartMs: 0, dDurationMs: 3000, segs: [{ utf8: 'vamos a ver eso en un segundo' }] },
+      { tStartMs: 3000, dDurationMs: 3000, segs: [{ utf8: 'entonces tenemos esta función' }] },
+    ],
+  });
+
+  it('draws the source alone instead of twice', async () => {
+    goTo('https://www.youtube.com/watch?v=AAA');
+    const h = await harness((text) => text);
+    await h.deliver('https://www.youtube.com/api/timedtext?v=AAA', LECTURE);
+
+    h.seek(1);
+    h.frame();
+
+    expect(h.lines()).toEqual(['vamos a ver eso en un segundo']);
+  });
+
+  it('ignores whitespace when deciding the reply says nothing new', async () => {
+    goTo('https://www.youtube.com/watch?v=AAA');
+    const h = await harness((text) => `  ${text.replace(/ /g, '  ')}  `);
+    await h.deliver('https://www.youtube.com/api/timedtext?v=AAA', LECTURE);
+
+    h.seek(1);
+    h.frame();
+
+    expect(h.lines()).toEqual(['vamos a ver eso en un segundo']);
+  });
+
+  it('still draws both lines for a real translation', async () => {
+    goTo('https://www.youtube.com/watch?v=AAA');
+    const h = await harness(() => '我们一秒钟后来看这个');
+    await h.deliver('https://www.youtube.com/api/timedtext?v=AAA', LECTURE);
+
+    h.seek(1);
+    h.frame();
+
+    expect(h.lines()).toEqual(['vamos a ver eso en un segundo', '我们一秒钟后来看这个']);
   });
 });

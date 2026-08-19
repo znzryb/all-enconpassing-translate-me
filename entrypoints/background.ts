@@ -1,9 +1,7 @@
-import { initCache, cacheGet, cacheSet, pruneEchoedSources } from '../src/core/cache';
-import {
-  SegmentMismatchError, TranslateError, translateBatch, type TranslateOptions,
-} from '../src/core/llm';
+import { initCache, pruneEchoedSources } from '../src/core/cache';
 import { activeProvider, loadSettings } from '../src/core/settings';
-import type { Message, TranslateJob, TranslateResponse } from '../src/shared/messages';
+import { errorText, handleTranslate, testConnection } from '../src/core/translate-job';
+import type { Message, TranslateResponse } from '../src/shared/messages';
 
 /** Marks the one-off cleanup of pre-fix cache entries as done. */
 const PRUNE_FLAG = 'aetm:pruned:v1';
@@ -88,97 +86,4 @@ async function pruneStaleEchoes(): Promise<void> {
 async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab;
-}
-
-/**
- * Resolves a batch: cache first, model for the remainder. When the model
- * breaks the `%%` segment contract the batch is retried one paragraph at a
- * time — slower, but it always terminates and never misaligns a translation
- * onto the wrong paragraph, which is the one failure a reader would notice.
- *
- * A paragraph that fails even then resolves to `undefined` rather than to its
- * own source text. The reply still carries the source so the caller has
- * something to show, but nothing is written to the cache: an echoed source
- * stored as a translation would be indistinguishable from a real one, and the
- * paragraph would stay untranslated on every future visit.
- */
-async function handleTranslate(job: TranslateJob): Promise<TranslateResponse> {
-  const settings = await loadSettings();
-  const provider = activeProvider(settings);
-  if (!provider.apiKey) return { ok: false, error: 'No API key configured' };
-
-  const opts: TranslateOptions = {
-    provider,
-    targetLang: job.targetLang,
-    subtitle: job.subtitle,
-    context: { title: job.title, extra: settings.extraPrompt },
-  };
-
-  const results: (string | undefined)[] = new Array(job.texts.length).fill(undefined);
-  const pending: number[] = [];
-
-  for (let i = 0; i < job.texts.length; i++) {
-    const text = job.texts[i]!;
-    const hit = settings.cacheEnabled
-      ? cacheGet(text, job.targetLang, provider.model, job.scope)
-      : undefined;
-    if (hit !== undefined) results[i] = hit;
-    else pending.push(i);
-  }
-
-  if (pending.length) {
-    const inputs = pending.map((i) => job.texts[i]!);
-    let translations: (string | undefined)[];
-    try {
-      translations = await translateBatch(inputs, opts);
-    } catch (err) {
-      if (!(err instanceof SegmentMismatchError)) {
-        return { ok: false, error: errorText(err) };
-      }
-      const settled = await Promise.allSettled(
-        inputs.map((text) => translateBatch([text], opts).then((r) => r[0])),
-      );
-      if (settled.every((r) => r.status === 'rejected')) {
-        const first = settled[0];
-        return {
-          ok: false,
-          mismatch: true,
-          error: first?.status === 'rejected' ? errorText(first.reason) : 'Translation failed',
-        };
-      }
-      translations = settled.map((r) => (r.status === 'fulfilled' ? r.value : undefined));
-    }
-
-    for (let k = 0; k < pending.length; k++) {
-      const index = pending[k]!;
-      const value = translations[k];
-      if (value === undefined) continue;
-      results[index] = value;
-      if (settings.cacheEnabled) {
-        cacheSet(job.texts[index]!, job.targetLang, provider.model, value, job.scope);
-      }
-    }
-  }
-
-  return { ok: true, translations: results.map((r, i) => r ?? job.texts[i]!) };
-}
-
-async function testConnection(): Promise<{ ok: boolean; error?: string; sample?: string }> {
-  const settings = await loadSettings();
-  try {
-    const [out] = await translateBatch(['Hello, world!'], {
-      provider: activeProvider(settings),
-      targetLang: settings.targetLang,
-      context: { extra: settings.extraPrompt },
-    });
-    return { ok: true, sample: out };
-  } catch (err) {
-    return { ok: false, error: errorText(err) };
-  }
-}
-
-function errorText(err: unknown): string {
-  if (err instanceof TranslateError) return err.message;
-  if (err instanceof Error) return err.message;
-  return String(err);
 }

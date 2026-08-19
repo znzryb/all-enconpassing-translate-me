@@ -49,18 +49,31 @@ const NATIVE_CAPTIONS: { match: RegExp; selectors: string[]; container?: string 
 
 let installed = false;
 
-export function installSubtitles(getSettings: () => Settings): void {
-  if (installed) return;
+/**
+ * Subscribes to tracks forwarded by the MAIN-world hook.
+ *
+ * Returns a function that undoes the subscription. A content script never
+ * calls it — it lives as long as its page — but without one there is no way to
+ * retire a controller, and anything holding the channel open keeps ingesting.
+ */
+export function installSubtitles(getSettings: () => Settings): () => void {
+  if (installed) return () => {};
   installed = true;
   const controller = new SubtitleController(getSettings);
 
-  window.addEventListener('message', (event) => {
+  const onMessage = (event: MessageEvent) => {
     if (event.source !== window) return;
     const data = event.data as { source?: string; url?: string; body?: string } | null;
     if (data?.source !== CHANNEL || !data.body || !data.url) return;
     if (!getSettings().subtitleEnabled) return;
     controller.ingest(data.body, data.url);
-  });
+  };
+  window.addEventListener('message', onMessage);
+
+  return () => {
+    window.removeEventListener('message', onMessage);
+    installed = false;
+  };
 }
 
 class SubtitleController {

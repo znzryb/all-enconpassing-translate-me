@@ -89,6 +89,8 @@ class SubtitleController {
   private href = location.href;
   /** Bumped on every reset so in-flight batches for a past video stop. */
   private generation = 0;
+  /** Last seen value of the subtitle setting, to notice it being switched. */
+  private enabled = true;
 
   constructor(private getSettings: () => Settings) {}
 
@@ -161,6 +163,7 @@ class SubtitleController {
     // Checked here rather than on a timer so a stale line cannot survive even
     // one painted frame after the video changes.
     this.syncMedia();
+    if (!this.syncEnabled()) return;
     const video = this.video;
     const layer = this.layer;
     if (!video || !layer?.isConnected) {
@@ -217,17 +220,43 @@ class SubtitleController {
     this.reset();
   }
 
+  /**
+   * Applies the subtitle setting, and reports whether to keep painting.
+   *
+   * Switching it off has to take effect on the video already playing, not just
+   * the next one — and it must give the player's own captions back, since
+   * hiding them is only justified while we are drawing a replacement. The cues
+   * are kept, so switching it on again resumes without refetching the track.
+   */
+  private syncEnabled(): boolean {
+    const enabled = this.getSettings().subtitleEnabled;
+    if (enabled !== this.enabled) {
+      this.enabled = enabled;
+      if (enabled) {
+        this.hideNativeCaptions();
+      } else {
+        this.hiddenStyle?.remove();
+        this.hiddenStyle = undefined;
+        this.clearLayer();
+      }
+    }
+    return enabled;
+  }
+
+  private clearLayer(): void {
+    const layer = this.layer;
+    if (!layer) return;
+    layer.textContent = '';
+    delete layer.dataset.cue;
+    delete layer.dataset.tr;
+  }
+
   /** Drops everything tied to the previous video, keeping the overlay itself. */
   private reset(): void {
     this.generation++;
     this.cues = [];
     this.lastKey = '';
-    const layer = this.layer;
-    if (layer) {
-      layer.textContent = '';
-      delete layer.dataset.cue;
-      delete layer.dataset.tr;
-    }
+    this.clearLayer();
   }
 
   private async translateAhead(from = 0): Promise<void> {

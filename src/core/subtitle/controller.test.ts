@@ -59,6 +59,8 @@ interface Harness {
   layer: () => HTMLElement | null;
   lines: () => (string | null)[];
   seek: (seconds: number) => void;
+  setSubtitles: (on: boolean) => void;
+  nativeCaptionsHidden: () => boolean;
   requests: { texts: string[]; scope?: string }[];
 }
 
@@ -99,9 +101,10 @@ async function harness(translate: (text: string) => string = (t) => `[${t}]`): P
     },
   });
 
+  let subtitleEnabled = true;
   const { installSubtitles: install } = await import('./controller');
   retire = install(() =>
-    ({ subtitleEnabled: true, targetLang: 'zh-CN', skipSameLanguage: false }) as Settings,
+    ({ subtitleEnabled, targetLang: 'zh-CN', skipSameLanguage: false }) as Settings,
   );
 
   return {
@@ -124,6 +127,13 @@ async function harness(translate: (text: string) => string = (t) => `[${t}]`): P
     seek: (seconds) => {
       currentTime = seconds;
     },
+    setSubtitles: (on) => {
+      subtitleEnabled = on;
+    },
+    nativeCaptionsHidden: () =>
+      Array.from(document.head.querySelectorAll('style')).some((el) =>
+        el.textContent?.includes('ytp-caption-window-container'),
+      ),
     requests,
   };
 }
@@ -246,5 +256,62 @@ describe('a reply identical to the source', () => {
     h.frame();
 
     expect(h.lines()).toEqual(['vamos a ver eso en un segundo', '我们一秒钟后来看这个']);
+  });
+});
+
+/**
+ * Switching subtitles off has to act on the video already playing, and give
+ * the player's own captions back — hiding them is only justified while we are
+ * drawing a replacement over them.
+ */
+describe('turning subtitles off', () => {
+  const TRACK = JSON.stringify({
+    events: [
+      { tStartMs: 0, dDurationMs: 3000, segs: [{ utf8: 'hola a todos' }] },
+      { tStartMs: 3000, dDurationMs: 3000, segs: [{ utf8: 'vamos a empezar' }] },
+    ],
+  });
+
+  async function playing() {
+    goTo('https://www.youtube.com/watch?v=AAA');
+    const h = await harness(() => '大家好');
+    await h.deliver('https://www.youtube.com/api/timedtext?v=AAA', TRACK);
+    h.seek(1);
+    h.frame();
+    return h;
+  }
+
+  it('clears the overlay on the video already playing', async () => {
+    const h = await playing();
+    expect(h.lines().length).toBe(2);
+
+    h.setSubtitles(false);
+    h.frame();
+
+    expect(h.lines()).toEqual([]);
+  });
+
+  it('gives the player its own captions back', async () => {
+    const h = await playing();
+    expect(h.nativeCaptionsHidden()).toBe(true);
+
+    h.setSubtitles(false);
+    h.frame();
+
+    expect(h.nativeCaptionsHidden()).toBe(false);
+  });
+
+  it('resumes from the cues it still holds when switched back on', async () => {
+    const h = await playing();
+    h.setSubtitles(false);
+    h.frame();
+    expect(h.lines()).toEqual([]);
+
+    h.setSubtitles(true);
+    h.frame();
+
+    // No track was delivered again: the cues survived the switch.
+    expect(h.lines()).toEqual(['hola a todos', '大家好']);
+    expect(h.nativeCaptionsHidden()).toBe(true);
   });
 });

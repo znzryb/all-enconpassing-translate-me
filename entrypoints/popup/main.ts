@@ -16,6 +16,7 @@ const els = {
   toggleLabel: $<HTMLSpanElement>('toggle-label'),
   lang: $<HTMLSelectElement>('lang'),
   provider: $<HTMLSelectElement>('provider'),
+  subtitles: $<HTMLInputElement>('subtitles'),
   auto: $<HTMLInputElement>('auto'),
   blocked: $<HTMLInputElement>('blocked'),
   status: $<HTMLSpanElement>('status'),
@@ -80,6 +81,12 @@ function wire(): void {
     render(await status());
   });
 
+  // Applies to the video already playing: the controller watches this setting
+  // and hands the player's own captions back when it goes off.
+  els.subtitles.addEventListener('change', async () => {
+    settings = await saveSettings({ subtitleEnabled: els.subtitles.checked });
+  });
+
   els.auto.addEventListener('change', async () => {
     settings = await saveSettings({
       autoTranslateHosts: toggleHost(settings.autoTranslateHosts, host, els.auto.checked),
@@ -109,6 +116,7 @@ function render(s: StatusResponse | undefined): void {
 
   els.lang.value = settings.targetLang;
   els.provider.value = settings.provider;
+  els.subtitles.checked = settings.subtitleEnabled;
   els.auto.checked = settings.autoTranslateHosts.includes(host);
   els.blocked.checked = settings.blockedHosts.includes(host);
 
